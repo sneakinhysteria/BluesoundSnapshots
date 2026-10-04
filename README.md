@@ -66,7 +66,7 @@ All settings are optional; defaults are detected automatically.
 | `BLUOS_SUBNETS` | auto | Comma-separated subnets to scan for players (/22 or smaller), e.g. `192.168.1.0/24` |
 | `BLUOS_SCAN` | on | `off` disables the subnet scan (LSDP and known addresses only) |
 | `PUBLIC_URL` | auto | Base URL the speakers use to fetch streams from this app, e.g. `http://192.168.1.10:8095` |
-| `AVAHI_INTERFACES` | all | Interfaces AirPlay receivers are announced on, e.g. `br0` |
+| `AVAHI_INTERFACES` | default-route interface | Interfaces AirPlay receivers are announced on, e.g. `br0` |
 | `AVAHI_HOSTNAME` | `bluesound-snapshots` | mDNS host name of the container (must differ from the host's own name) |
 | `DATA_DIR` | `/data` | Database location |
 
