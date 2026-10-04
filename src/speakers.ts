@@ -1,6 +1,6 @@
-// Speaker overview for the UI: every speaker ever seen, with its current role and reachability.
+// Speaker overview for the UI, from the stored device list (updated by every discovery,
+// background read and monitor rescan) and the last read setup.
 
-import { foundBy, lastDiscovered } from './discovery.ts';
 import type { Snapshot } from './snapshot.ts';
 import { devices } from './store.ts';
 
@@ -10,12 +10,15 @@ export interface SpeakerInfo {
   model: string;
   modelCode: string;
   ip: string;
-  version?: string;
+  version: string;
   reachable: boolean;
   role: string;
-  foundBy?: string;
+  foundBy: string;
   lastSeen: string;
 }
+
+// The monitor rescans every 5 minutes; a speaker that did not answer in two rounds counts as offline.
+const REACHABLE_MS = 11 * 60_000;
 
 const CHANNEL: Record<string, string> = {
   front: 'front', left: 'left channel', right: 'right channel', side_left: 'left surround', side_right: 'right surround',
@@ -23,33 +26,33 @@ const CHANNEL: Record<string, string> = {
 };
 
 export function speakerList(current?: Snapshot): SpeakerInfo[] {
-  const lan = lastDiscovered()?.lan ?? new Map();
-  const nameOf = (mac: string) => devices.list().find((d) => d.mac === mac)?.name ?? mac;
-  return devices.list().map((d) => {
-    const live = lan.get(d.mac);
-    const zone = current?.zones.find((z) => z.leader.mac === d.mac || z.members.some((m) => m.mac === d.mac) || z.sub?.mac === d.mac);
+  const all = devices.list();
+  const fresh = (mac: string) => {
+    const d = all.find((x) => x.mac === mac);
+    return !!d && Date.now() - new Date(d.seenAt).getTime() < REACHABLE_MS;
+  };
+  return all.map((d) => {
+    let reachable = fresh(d.mac);
+    const zone = current?.zones.find((z) => z.leader.mac === d.mac || z.members.some((m) => m.mac === d.mac) || z.sub?.mac === d.mac
+      || z.dynamicSlaves.some((s) => s.mac === d.mac));
     const label = zone ? `"${zone.groupName ?? zone.leader.name}"` : '';
     let role: string;
-    if (zone && zone.leader.mac === d.mac) role = zone.members.length || zone.sub || zone.dynamicSlaves.length ? `leader of ${label}` : 'standalone';
-    else if (zone && zone.sub?.mac === d.mac) role = `subwoofer in ${label}`;
-    else if (zone) {
-      const mode = zone.members.find((m) => m.mac === d.mac)?.channelMode ?? '';
-      role = `${CHANNEL[mode] ?? 'member'} in ${label}`;
+    if (!zone) role = reachable ? 'standalone' : 'not found';
+    else if (zone.leader.mac === d.mac) role = zone.members.length || zone.sub || zone.dynamicSlaves.length ? `leader of ${label}` : 'standalone';
+    else if (zone.sub?.mac === d.mac) role = `subwoofer in ${label}`;
+    else if (zone.dynamicSlaves.some((s) => s.mac === d.mac)) role = `grouped with ${label}`;
+    else {
+      const m = zone.members.find((x) => x.mac === d.mac);
+      role = `${CHANNEL[m?.channelMode ?? ''] ?? 'member'} in ${label}`;
     }
-    else if (live?.master) role = `member of ${nameOf(lan.get(live.master.host)?.mac ?? live.master.host)}`;
-    else role = live ? 'standalone' : 'not found';
-    if (!live && zone) role += ' (on the leader\'s private network)';
+    const surround = zone && zone.leader.mac !== d.mac && zone.members.some((m) => !['left', 'right'].includes(m.channelMode));
+    if (surround) {
+      role += " (on the leader's private network)";
+      reachable ||= fresh(zone.leader.mac); // only reachable through the leader, which the monitor sees
+    }
     return {
-      mac: d.mac,
-      name: d.name,
-      model: live && !live.group ? live.modelName : d.model,
-      modelCode: live?.model || d.modelCode,
-      ip: live?.host ?? d.lastIp,
-      version: live?.version,
-      reachable: !!live,
-      role,
-      foundBy: live ? foundBy.get(d.mac) : undefined,
-      lastSeen: d.seenAt,
+      mac: d.mac, name: d.name, model: d.model, modelCode: d.modelCode, ip: d.lastIp, version: d.version,
+      reachable, role, foundBy: d.foundBy, lastSeen: d.seenAt,
     };
   }).sort((a, b) => a.name.localeCompare(b.name));
 }

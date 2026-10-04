@@ -3,7 +3,10 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Snapshot } from './snapshot.ts';
 
-export interface Device { mac: string; name: string; model: string; modelCode: string; lastIp: string; seenAt: string }
+export interface Device {
+  mac: string; name: string; model: string; modelCode: string; lastIp: string; seenAt: string;
+  version: string; foundBy: string;
+}
 export interface SnapshotRow { id: number; name: string; createdAt: string; updatedAt: string; data: Snapshot }
 
 const dataDir = process.env.DATA_DIR ?? join(process.cwd(), 'data');
@@ -41,8 +44,10 @@ db.exec(`
 `);
 
 // Added after the first release: model number (e.g. "P430") next to the model name.
-if (!(db.prepare("SELECT name FROM pragma_table_info('devices')").all() as any[]).some((c) => c.name === 'model_code')) {
-  db.exec("ALTER TABLE devices ADD COLUMN model_code TEXT NOT NULL DEFAULT ''");
+// Columns added after the first release.
+const deviceColumns = new Set((db.prepare("SELECT name FROM pragma_table_info('devices')").all() as any[]).map((c) => c.name));
+for (const col of ['model_code', 'version', 'found_by']) {
+  if (!deviceColumns.has(col)) db.exec(`ALTER TABLE devices ADD COLUMN ${col} TEXT NOT NULL DEFAULT ''`);
 }
 
 const toRow = (r: any): SnapshotRow => ({
@@ -80,14 +85,19 @@ export const devices = {
   list(): Device[] {
     return db.prepare('SELECT * FROM devices').all().map((r: any) => ({
       mac: r.mac, name: r.name, model: r.model, modelCode: r.model_code, lastIp: r.last_ip, seenAt: r.seen_at,
+      version: r.version, foundBy: r.found_by,
     }));
   },
-  upsert(d: Omit<Device, 'seenAt' | 'modelCode'> & { modelCode?: string }) {
-    db.prepare(`INSERT INTO devices (mac, name, model, model_code, last_ip, seen_at) VALUES (?, ?, ?, ?, ?, ?)
+  upsert(d: { mac: string; name: string; model: string; lastIp: string; modelCode?: string; version?: string }) {
+    db.prepare(`INSERT INTO devices (mac, name, model, model_code, version, last_ip, seen_at) VALUES (?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(mac) DO UPDATE SET name = excluded.name, model = excluded.model,
         model_code = CASE WHEN excluded.model_code <> '' THEN excluded.model_code ELSE devices.model_code END,
+        version = CASE WHEN excluded.version <> '' THEN excluded.version ELSE devices.version END,
         last_ip = excluded.last_ip, seen_at = excluded.seen_at`)
-      .run(d.mac, d.name, d.model, d.modelCode ?? '', d.lastIp, new Date().toISOString());
+      .run(d.mac, d.name, d.model, d.modelCode ?? '', d.version ?? '', d.lastIp, new Date().toISOString());
+  },
+  setFoundBy(mac: string, how: string) {
+    db.prepare('UPDATE devices SET found_by = ? WHERE mac = ?').run(how, mac);
   },
 };
 

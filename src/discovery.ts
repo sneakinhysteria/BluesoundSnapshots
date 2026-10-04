@@ -67,7 +67,7 @@ function remember(players: SyncStatus[]) {
     const prev = known.get(p.mac);
     const name = p.group ? (prev?.name ?? p.name) : p.name;
     const model = p.group ? (prev && prev.model !== p.model ? prev.model : p.model) : p.modelName || p.model;
-    devices.upsert({ mac: p.mac, name, model, modelCode: p.model, lastIp: p.host });
+    devices.upsert({ mac: p.mac, name, model, modelCode: p.model, version: p.version, lastIp: p.host });
   }
 }
 
@@ -78,11 +78,6 @@ export async function probeHosts(hosts: string[], timeoutMs = 1500): Promise<Map
   return new Map(players.filter((p) => p.mac).map((p) => [p.mac, p]));
 }
 
-/** How each speaker was found by the last full discovery, by MAC. */
-export const foundBy = new Map<string, 'LSDP' | 'known address' | 'network scan' | 'group leader'>();
-let lastDiscovery: { at: number; lan: Map<string, SyncStatus> } | undefined;
-export const lastDiscovered = () => lastDiscovery;
-
 /** Full discovery, keyed by MAC. Set BLUOS_SCAN=off to rely on LSDP and known addresses only. */
 export async function discover(timeoutMs = 1200): Promise<Map<string, SyncStatus>> {
   const known = new Set<string>(devices.list().map((d) => d.lastIp).filter(Boolean));
@@ -90,14 +85,17 @@ export async function discover(timeoutMs = 1200): Promise<Map<string, SyncStatus
   const hosts = new Set([...lsdp, ...known]);
   if (process.env.BLUOS_SCAN !== 'off') for (const cidr of scanSubnets()) for (const h of hostsOf(cidr)) hosts.add(h);
   const found = await probeHosts([...hosts], timeoutMs);
-  for (const p of found.values()) foundBy.set(p.mac, lsdp.has(p.host) ? 'LSDP' : known.has(p.host) ? 'known address' : 'network scan');
+  // How it was found: LSDP and the scan say more than "known address", so they win.
+  for (const p of found.values()) {
+    const how = lsdp.has(p.host) ? 'LSDP' : known.has(p.host) ? '' : 'network scan';
+    if (how || !devices.list().find((d) => d.mac === p.mac)?.foundBy) devices.setFoundBy(p.mac, how || 'known address');
+  }
 
   // Group members on the LAN (e.g. a stereo partner) are listed by their leader.
   const members = [...found.values()].flatMap((p) => [...p.members, ...p.slaves].map((m) => m.id))
     .filter((ip) => !hosts.has(ip) && /^\d+\.\d+\.\d+\.\d+$/.test(ip));
   if (members.length) {
-    for (const [mac, p] of await probeHosts(members, timeoutMs)) { found.set(mac, p); foundBy.set(mac, 'group leader'); }
+    for (const [mac, p] of await probeHosts(members, timeoutMs)) { found.set(mac, p); devices.setFoundBy(mac, 'group leader'); }
   }
-  lastDiscovery = { at: Date.now(), lan: found };
   return found;
 }

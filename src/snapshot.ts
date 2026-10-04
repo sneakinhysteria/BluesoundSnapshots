@@ -48,7 +48,8 @@ export async function resolveMac(leader: SyncStatus, m: { id: string; port: numb
     const s = await memberSyncStatus(leader.host, m);
     if (s.mac) {
       const prev = devices.list().find((d) => d.mac === s.mac);
-      if (prev) devices.upsert({ mac: s.mac, name: prev.name, model: s.modelName || prev.model, modelCode: s.model, lastIp: prev.lastIp });
+      if (prev) devices.upsert({ mac: s.mac, name: prev.name, model: s.modelName || prev.model, modelCode: s.model, version: s.version, lastIp: prev.lastIp });
+      if (prev && !prev.foundBy) devices.setFoundBy(s.mac, 'group leader');
       return { mac: s.mac, name: s.name, model: s.modelName };
     }
   } catch {
