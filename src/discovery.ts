@@ -71,6 +71,7 @@ function remember(players: SyncStatus[]) {
     const name = p.group ? (prev?.name ?? p.name) : p.name;
     const model = p.group ? (prev && prev.model !== p.model ? prev.model : p.model) : p.modelName || p.model;
     devices.upsert({ mac: p.mac, name, model, modelCode: p.model, version: p.version, lastIp: p.host });
+    if (prev?.directIp) devices.setDirect(p.mac, '', ''); // back on the LAN
   }
 }
 

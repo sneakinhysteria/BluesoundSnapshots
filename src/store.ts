@@ -6,6 +6,7 @@ import type { Snapshot } from './snapshot.ts';
 export interface Device {
   mac: string; name: string; model: string; modelCode: string; lastIp: string; seenAt: string;
   version: string; foundBy: string;
+  directIp: string; directVia: string;   // address on a soundbar's Direct Connect network, and that soundbar's MAC
 }
 export interface SnapshotRow { id: number; name: string; createdAt: string; updatedAt: string; data: Snapshot }
 
@@ -46,7 +47,7 @@ db.exec(`
 // Added after the first release: model number (e.g. "P430") next to the model name.
 // Columns added after the first release.
 const deviceColumns = new Set((db.prepare("SELECT name FROM pragma_table_info('devices')").all() as any[]).map((c) => c.name));
-for (const col of ['model_code', 'version', 'found_by']) {
+for (const col of ['model_code', 'version', 'found_by', 'direct_ip', 'direct_via']) {
   if (!deviceColumns.has(col)) db.exec(`ALTER TABLE devices ADD COLUMN ${col} TEXT NOT NULL DEFAULT ''`);
 }
 
@@ -85,7 +86,7 @@ export const devices = {
   list(): Device[] {
     return db.prepare('SELECT * FROM devices').all().map((r: any) => ({
       mac: r.mac, name: r.name, model: r.model, modelCode: r.model_code, lastIp: r.last_ip, seenAt: r.seen_at,
-      version: r.version, foundBy: r.found_by,
+      version: r.version, foundBy: r.found_by, directIp: r.direct_ip, directVia: r.direct_via,
     }));
   },
   upsert(d: { mac: string; name: string; model: string; lastIp: string; modelCode?: string; version?: string }) {
@@ -95,6 +96,10 @@ export const devices = {
         version = CASE WHEN excluded.version <> '' THEN excluded.version ELSE devices.version END,
         last_ip = excluded.last_ip, seen_at = excluded.seen_at`)
       .run(d.mac, d.name, d.model, d.modelCode ?? '', d.version ?? '', d.lastIp, new Date().toISOString());
+  },
+  /** Records (or clears, with '') a speaker's address on a soundbar's Direct Connect network. */
+  setDirect(mac: string, ip: string, viaMac: string) {
+    db.prepare('UPDATE devices SET direct_ip = ?, direct_via = ? WHERE mac = ?').run(ip, viaMac, mac);
   },
   setFoundBy(mac: string, how: string) {
     db.prepare('UPDATE devices SET found_by = ? WHERE mac = ?').run(how, mac);

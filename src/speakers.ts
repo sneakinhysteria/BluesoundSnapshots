@@ -10,6 +10,8 @@ export interface SpeakerInfo {
   model: string;
   modelCode: string;
   ip: string;
+  lanIp: string;          // LAN address (differs from ip while on a soundbar's Direct Connect network)
+  via?: string;           // name of the soundbar it is connected to directly
   version: string;
   reachable: boolean;
   role: string;
@@ -46,12 +48,12 @@ export function speakerList(current?: Snapshot): SpeakerInfo[] {
       role = `${CHANNEL[m?.channelMode ?? ''] ?? 'member'} in ${label}`;
     }
     const surround = zone && zone.leader.mac !== d.mac && zone.members.some((m) => !['left', 'right'].includes(m.channelMode));
-    if (surround) {
-      role += " (on the leader's private network)";
-      reachable ||= fresh(zone.leader.mac); // only reachable through the leader, which the monitor sees
-    }
+    const direct = !!zone && zone.leader.mac !== d.mac && !!d.directIp && d.directVia === zone.leader.mac;
+    if (direct || surround) reachable ||= fresh(zone!.leader.mac); // only reachable through the leader
     return {
-      mac: d.mac, name: d.name, model: d.model, modelCode: d.modelCode, ip: d.lastIp, version: d.version,
+      mac: d.mac, name: d.name, model: d.model, modelCode: d.modelCode,
+      ip: direct ? d.directIp : d.lastIp, lanIp: d.lastIp,
+      via: direct ? all.find((x) => x.mac === zone!.leader.mac)?.name : undefined, version: d.version,
       reachable, role, foundBy: d.foundBy, lastSeen: d.seenAt,
     };
   }).sort((a, b) => a.name.localeCompare(b.name));

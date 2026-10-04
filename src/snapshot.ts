@@ -50,6 +50,7 @@ export async function resolveMac(leader: SyncStatus, m: { id: string; port: numb
       const prev = devices.list().find((d) => d.mac === s.mac);
       if (prev) devices.upsert({ mac: s.mac, name: prev.name, model: s.modelName || prev.model, modelCode: s.model, version: s.version, lastIp: prev.lastIp });
       if (prev && !prev.foundBy) devices.setFoundBy(s.mac, 'group leader');
+      if (prev) devices.setDirect(s.mac, m.id, leader.mac); // reachable only through this leader
       return { mac: s.mac, name: s.name, model: s.modelName };
     }
   } catch {
