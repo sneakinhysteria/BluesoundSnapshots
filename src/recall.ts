@@ -159,14 +159,15 @@ async function build(z: SnapshotZone, lan: Map<string, SyncStatus>, log: Log) {
   }
 }
 
-// Plays digital silence at volume 0 and checks that playback advances. A group can look
-// complete in SyncStatus yet stay in "connecting" forever; only a restart of its speakers helps.
+// Plays inaudible noise at volume 0 and checks that playback advances. A group can look complete
+// in SyncStatus yet stay in "connecting" for any real audio (it still "plays" digital silence);
+// only a restart of its speakers helps.
 async function playbackWorks(leaderHost: string, log: Log): Promise<boolean> {
   log('Checking playback (silent)');
   expectVolume(leaderHost, 0, 'Recall (silent check)');
   await bluosGet(leaderHost, '/Volume', { level: 0, tell_slaves: 0 });
   try {
-    await bluosGet(leaderHost, '/Play', { url: `${selfUrl(leaderHost)}/stream/silence.flac` }, 15_000);
+    await bluosGet(leaderHost, '/Play', { url: `${selfUrl(leaderHost)}/stream/check.flac` }, 15_000);
     const until = Date.now() + PLAYBACK_CHECK_MS;
     while (Date.now() < until) {
       await sleep(2000);
@@ -189,9 +190,12 @@ async function rebootSpeakers(macs: string[], lan: Map<string, SyncStatus>, log:
   await sleep(15_000); // let them go offline before polling for their return
 }
 
-/** Builds a zone and checks it plays; on failure restarts its speakers once and builds again. */
-async function buildChecked(z: SnapshotZone, lan: Map<string, SyncStatus>, log: Log, job: Job): Promise<Map<string, SyncStatus>> {
-  await build(z, lan, log);
+/**
+ * Builds a zone (unless it already matches) and checks it plays; on failure restarts its speakers
+ * once and builds again.
+ */
+async function buildChecked(z: SnapshotZone, lan: Map<string, SyncStatus>, log: Log, job: Job, alreadyBuilt = false): Promise<Map<string, SyncStatus>> {
+  if (!alreadyBuilt) await build(z, lan, log);
   if (!z.members.length && !z.sub) return lan;
   const label = z.groupName ?? z.leader.name;
   if (await playbackWorks(hostOf(lan, z.leader.mac, z.leader.name), log)) return lan;
@@ -268,6 +272,11 @@ async function recall(target: Snapshot, log: Log, job: Job) {
 
   for (const z of rebuild) if (z.members.length || z.sub || z.dynamicSlaves.length) lan = await buildChecked(z, lan, log, job);
 
+  lan = await discover();
+  // Groups that already matched are checked too: a recall of the active setup repairs a stuck group.
+  for (const z of target.zones) {
+    if (keep.has(zoneKey(z)) && (z.members.length || z.sub)) lan = await buildChecked(z, lan, log, job, true);
+  }
   lan = await discover();
   for (const z of target.zones) {
     try {

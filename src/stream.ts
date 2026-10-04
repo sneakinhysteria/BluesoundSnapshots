@@ -32,13 +32,14 @@ function flacEncoder(input: string[]): ChildProcess {
 type PcmSource = (id: string) => { subscribe(sink: NodeJS.WritableStream): () => void } | undefined;
 
 export function registerStreams(app: FastifyInstance, pcmSource: PcmSource) {
-  // Digital silence, used to check that a group actually plays.
-  app.get('/stream/silence.flac', (req, reply) => {
+  // Very quiet noise (-70 dBFS), played at volume 0 to check that a group actually plays. Digital
+  // silence is not enough: a stuck stereo pair "plays" silence but stays in "connecting" for music.
+  app.get('/stream/check.flac', (req, reply) => {
     reply.hijack();
-    const ff = flacEncoder(['-re', '-f', 'lavfi', '-i', `anullsrc=r=${PCM.rate}:cl=stereo`]);
+    const ff = flacEncoder(['-re', '-f', 'lavfi', '-i', `anoisesrc=a=0.0003:r=${PCM.rate},aformat=channel_layouts=stereo`]);
     reply.raw.writeHead(200, { 'content-type': 'audio/flac', 'cache-control': 'no-cache' });
     ff.stdout!.pipe(reply.raw);
-    req.raw.on('close', () => ff.kill());
+    reply.raw.on('close', () => ff.kill()); // the response closes when the player disconnects
   });
 
   // Live audio of an AirPlay bridge.
@@ -54,6 +55,6 @@ export function registerStreams(app: FastifyInstance, pcmSource: PcmSource) {
     const unsubscribe = source.subscribe(ff.stdin!);
     reply.raw.writeHead(200, { 'content-type': 'audio/flac', 'cache-control': 'no-cache' });
     ff.stdout!.pipe(reply.raw);
-    req.raw.on('close', () => { unsubscribe(); ff.kill(); });
+    reply.raw.on('close', () => { unsubscribe(); ff.kill(); });
   });
 }

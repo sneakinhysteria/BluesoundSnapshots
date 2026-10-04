@@ -88,7 +88,7 @@ app.get('/api/events/stream', (req, reply) => {
   const send = (e: PlayerEvent) => reply.raw.write(`data: ${JSON.stringify(e)}\n\n`);
   const ping = setInterval(() => reply.raw.write(': ping\n\n'), 25_000); // keeps proxies from closing it
   eventBus.on('event', send);
-  req.raw.on('close', () => { clearInterval(ping); eventBus.off('event', send); });
+  reply.raw.on('close', () => { clearInterval(ping); eventBus.off('event', send); });
 });
 
 app.get('/api/guard', async () => guardInfo());
@@ -143,7 +143,7 @@ app.get('/api/airplay/stream', (req, reply) => {
   for (const r of airplayStatus()) send(r.id, nowPlaying(r.id));
   const ping = setInterval(() => reply.raw.write(': ping\n\n'), 25_000);
   nowPlayingBus.on('update', send);
-  req.raw.on('close', () => { clearInterval(ping); nowPlayingBus.off('update', send); });
+  reply.raw.on('close', () => { clearInterval(ping); nowPlayingBus.off('update', send); });
 });
 
 // Session hooks from shairport-sync (docker/airplay-hook.sh), local only.
