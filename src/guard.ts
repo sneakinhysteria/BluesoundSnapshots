@@ -56,14 +56,22 @@ const setAnchor = (mac: string, t: number) => {
 
 function setPattern(mac: string, p: Pattern | undefined) {
   if (!p) { patterns.delete(mac); return; }
+  // A later reference point is used if it fits the learned rhythm, or if the learned chain is too
+  // old to predict anything (e.g. a TV start after a pause). This ignores misdetections.
   const a = anchors.get(mac);
-  if (a && a > p.anchor) p.anchor = a;
+  if (a && a > p.anchor) {
+    const k = Math.round((a - p.anchor) / p.periodMs);
+    if (k > MAX_CYCLES || Math.abs(a - (p.anchor + k * p.periodMs)) <= window(p.periodMs)) p.anchor = a;
+  }
   patterns.set(mac, p);
 }
 
 // ---- Pattern learning ----
 
+let recentAnchor = 0;
+
 function analyze(mac: string): Pattern | undefined {
+  recentAnchor = 0;
   const seqs = (sequences.get(mac) ?? []).filter((s) => s.t > Date.now() - HISTORY_MS);
   sequences.set(mac, seqs);
   if (seqs.length < MIN_MATCHES) return undefined;
@@ -101,6 +109,23 @@ function analyze(mac: string): Pattern | undefined {
   }
   if (!best || best.matched.length < MIN_MATCHES || best.score < MIN_MATCHES - 1) return undefined;
 
+  // For predictions, the most recent chain at that period matters (e.g. after the TV was off for
+  // hours the strongest chain may be from the morning).
+  {
+    const tol = tolerance(best.period);
+    let latest: Seq[] | undefined;
+    for (let a = 0; a < seqs.length; a++) {
+      const chain = [seqs[a]];
+      for (let i = a + 1; i < seqs.length; i++) {
+        const k = Math.round((seqs[i].t - chain[chain.length - 1].t) / best.period);
+        if (k > MAX_CYCLES) break;
+        if (k >= 1 && Math.abs(seqs[i].t - (chain[chain.length - 1].t + k * best.period)) <= tol) chain.push(seqs[i]);
+      }
+      if (chain.length >= MIN_MATCHES && (!latest || chain[chain.length - 1].t > latest[latest.length - 1].t)) latest = chain;
+    }
+    if (latest) recentAnchor = latest[latest.length - 1].t;
+  }
+
   // Refine the period by least squares over (k, t).
   const n = best.ks.length, mk = best.ks.reduce((a, b) => a + b, 0) / n;
   const mt = best.matched.reduce((a, s) => a + s.t, 0) / n;
@@ -110,7 +135,7 @@ function analyze(mac: string): Pattern | undefined {
 
   const m = best.matched;
   return {
-    mac, player: m[0].player, periodMs, anchor: Math.max(...m.map((s) => s.t)), matches: m.length,
+    mac, player: m[0].player, periodMs, anchor: Math.max(recentAnchor, ...m.map((s) => s.t)), matches: m.length,
     since: Math.min(...m.map((s) => s.t)),
     up: m.filter((s) => s.to > s.from).length, down: m.filter((s) => s.to < s.from).length,
     minSteps: Math.min(...m.map((s) => s.steps)), maxSteps: Math.max(...m.map((s) => s.steps)),
@@ -147,10 +172,16 @@ async function judge(changes: VolumeChange[]) {
   const before = patterns.get(seq.mac);
   const rhythm = inWindow(before, seq.t);
   const burst = minGap < BURST_GAP_MS;
+  // Fast steps against the learned direction are people (e.g. holding a volume key after the TV
+  // started), not the TV's drift. A pattern with both directions accepts both.
+  const up = seq.to > seq.from;
+  const directionFits = !before || (up ? before.up > 0 : before.down > 0);
+  const beyondHorizon = !before || seq.t - before.anchor > MAX_CYCLES * before.periodMs;
 
   (sequences.get(seq.mac) ?? sequences.set(seq.mac, []).get(seq.mac)!).push(seq);
-  const automaticNow = rhythm || (burst && (before?.bursty ?? false));
-  if (automaticNow) setAnchor(seq.mac, seq.t); // restart the rhythm from every recognised drift
+  const automaticNow = rhythm || (burst && (before?.bursty ?? false) && directionFits);
+  // Re-anchor on drifts that fit the rhythm, or on a burst after a long pause (rhythm lost).
+  if (rhythm || (automaticNow && beyondHorizon)) setAnchor(seq.mac, seq.t);
   const learned = analyze(seq.mac);
   setPattern(seq.mac, learned);
   if (!before && learned) {
@@ -162,7 +193,7 @@ async function judge(changes: VolumeChange[]) {
   if (mode === 'lock') return restore(seq, 'lock');
 
   const automatic = automaticNow;
-  if (!automatic && !burst) return; // remote control or other manual change
+  if (!automatic && (!burst || !directionFits)) return; // remote control or other manual change
   const why = rhythm ? `rhythm ${fmt(before!.periodMs)}` : 'burst';
   if (mode === 'undo' && automatic) return restore(seq, why);
   events.add({ mac: seq.mac, player: seq.player, kind: 'guard',
