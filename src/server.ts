@@ -1,15 +1,15 @@
 import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
 import { join } from 'node:path';
-import { applyEdits, backfillMeta, captureSnapshot, carryOver, isActive, latest, type Snapshot, type ZoneEdit } from './snapshot.ts';
+import { applyEdits, backfillMeta, captureSnapshot, carryOver, isActive, latest, setLatest, type Snapshot, type ZoneEdit } from './snapshot.ts';
 import { airplayAvailable, airplayEvent, airplayStatus, pcmSource, reconcileAirplay, setAirplayLogger, stopAllAirplay } from './airplay.ts';
 import { registerStreams } from './stream.ts';
 import { startMonitor } from './monitor.ts';
 import { startLsdp } from './lsdp.ts';
 import { speakerList } from './speakers.ts';
-import { discover, scanSubnets } from './discovery.ts';
+import { discover, probeHosts, scanSubnets } from './discovery.ts';
 import { getJob, runningJob, startRecall } from './recall.ts';
-import { events, snapshots } from './store.ts';
+import { devices, events, snapshots } from './store.ts';
 
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info' } });
 
@@ -33,7 +33,7 @@ const cleanName = (name: unknown) => {
 };
 
 function afterRead(current: Snapshot) {
-  latest.current = current;
+  setLatest(current);
   reconcileAirplay(current);
   for (const s of snapshots.list()) {
     const filled = backfillMeta(s.data, current);
@@ -41,12 +41,30 @@ function afterRead(current: Snapshot) {
   }
 }
 
-app.get('/api/current', async () => {
+const withActive = (current: Snapshot) =>
+  ({ ...current, activeSnapshotIds: snapshots.list().filter((s) => isActive(s.data, current)).map((s) => s.id) });
+
+// ?cached=1 answers immediately with the last stored read (kept fresh by the monitor).
+app.get<{ Querystring: { cached?: string } }>('/api/current', async (req) => {
+  if (req.query.cached && latest.current) return withActive(latest.current);
   busy();
   const current = await captureSnapshot();
   afterRead(current);
-  return { ...current, activeSnapshotIds: snapshots.list().filter((s) => isActive(s.data, current)).map((s) => s.id) };
+  return withActive(current);
 });
+
+// Re-read the setup in the background when a player reports a grouping change.
+let refreshTimer: NodeJS.Timeout | undefined;
+function scheduleRefresh() {
+  clearTimeout(refreshTimer);
+  refreshTimer = setTimeout(() => {
+    if (runningJob()) return; // a recall reads the setup itself when it finishes
+    // Known addresses only: syncStat also changes with volume, so this runs often.
+    probeHosts(devices.list().map((d) => d.lastIp).filter(Boolean))
+      .then(captureSnapshot).then(afterRead)
+      .catch((e) => app.log.warn(`Background read failed: ${e.message}`));
+  }, 5000);
+}
 
 app.get<{ Querystring: { limit?: string; kind?: string } }>('/api/events', async (req) =>
   events.list(Math.min(Number(req.query.limit ?? 200) || 200, 1000), req.query.kind || undefined));
@@ -125,6 +143,6 @@ await app.listen({ host: process.env.HOST ?? '0.0.0.0', port: Number(process.env
 
 if (!airplayAvailable()) app.log.warn('shairport-sync not found, AirPlay receivers disabled');
 startLsdp((msg) => app.log.warn(msg));
-startMonitor((msg) => app.log.warn(msg));
+startMonitor((msg) => app.log.warn(msg), scheduleRefresh);
 captureSnapshot().then(afterRead).catch((e) => app.log.warn(`Initial read failed: ${e.message}`));
 for (const sig of ['SIGTERM', 'SIGINT'] as const) process.on(sig, () => { stopAllAirplay(); process.exit(0); });

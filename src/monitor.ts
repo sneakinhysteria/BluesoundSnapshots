@@ -36,6 +36,8 @@ async function longPoll(w: Watch, path: string, onChange: (body: any, first: boo
   }
 }
 
+let onGroupingChange: () => void = () => {};
+
 function watch(mac: string, host: string, name: string) {
   const w: Watch = { mac, host, name, stop: false };
   watches.set(mac, w);
@@ -55,8 +57,13 @@ function watch(mac: string, host: string, name: string) {
   });
 
   let input = '';
-  longPoll(w, '/Status', (body) => {
+  let syncStat = '';
+  longPoll(w, '/Status', (body, first) => {
     const s = body.status ?? {};
+    // syncStat changes when the player's name, volume or grouping changes (BluOS API 2.1).
+    const ss = text(s.syncStat);
+    if (!first && syncStat && ss !== syncStat) onGroupingChange();
+    syncStat = ss;
     const desc = [s.state, s.service, s.inputId, s.title1, s.streamFormat, s.quality].map(text).filter(Boolean).join(' | ');
     if (desc !== input) log('playback', desc || '(idle)');
     input = desc;
@@ -72,7 +79,8 @@ async function refresh(full: boolean) {
   }
 }
 
-export function startMonitor(logWarn: (msg: string) => void) {
+export function startMonitor(logWarn: (msg: string) => void, groupingChanged: () => void) {
+  onGroupingChange = groupingChanged;
   let n = 0;
   const loop = async () => {
     try { await refresh(n++ % 6 === 0); } catch (e: any) { logWarn(`Monitor refresh failed: ${e.message}`); }

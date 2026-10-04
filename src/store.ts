@@ -27,6 +27,10 @@ db.exec(`
     detail TEXT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS events_t ON events (t);
+  CREATE TABLE IF NOT EXISTS kv (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
   CREATE TABLE IF NOT EXISTS devices (
     mac TEXT PRIMARY KEY,
     name TEXT NOT NULL,
@@ -106,5 +110,17 @@ export const events = {
       ? db.prepare('SELECT * FROM events WHERE kind = ? ORDER BY id DESC LIMIT ?').all(kind, limit)
       : db.prepare('SELECT * FROM events ORDER BY id DESC LIMIT ?').all(limit);
     return rows as unknown as PlayerEvent[];
+  },
+};
+
+/** Small persisted values (JSON). */
+export const kv = {
+  get<T>(key: string): T | undefined {
+    const r = db.prepare('SELECT value FROM kv WHERE key = ?').get(key) as { value: string } | undefined;
+    return r ? JSON.parse(r.value) : undefined;
+  },
+  set(key: string, value: unknown) {
+    db.prepare('INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
+      .run(key, JSON.stringify(value));
   },
 };

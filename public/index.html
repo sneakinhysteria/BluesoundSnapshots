@@ -285,18 +285,27 @@ function collectEdits(card) {
 
 // ---- Rendering ----
 
-async function loadCurrent() {
+function showCurrent(snap) {
+  current = snap;
+  $('#current').className = '';
+  $('#current').innerHTML = (snap.zones.map(zoneHtml).join('') || '<span class="empty">No speakers found</span>') +
+    `<div class="hint">As of ${new Date(snap.capturedAt).toLocaleTimeString()}</div>`;
+  if (!editing.size) renderSnapshots(); // don't discard unsaved edits
+}
+
+// Shows the stored setup at once, then reads the speakers live.
+async function loadCurrent(live = true) {
   const btn = $('#refresh');
+  if (!live) {
+    try { showCurrent(await api('GET', '/api/current?cached=1')); } catch {}
+    return;
+  }
   btn.disabled = true; btn.textContent = 'Reading…';
   try {
-    current = await api('GET', '/api/current');
-    $('#current').className = '';
-    $('#current').innerHTML = current.zones.map(zoneHtml).join('') || '<span class="empty">No speakers found</span>';
-    if (!editing.size) renderSnapshots(); // don't discard unsaved edits
+    showCurrent(await api('GET', '/api/current'));
     loadAirplay();
   } catch (e) {
-    $('#current').className = 'empty';
-    $('#current').textContent = e.message;
+    if (!current) { $('#current').className = 'empty'; $('#current').textContent = e.message; }
   }
   btn.disabled = busy; btn.textContent = 'Refresh';
 }
@@ -505,9 +514,9 @@ $('#save').addEventListener('submit', async (ev) => {
     const job = await api('GET', '/api/jobs/running');
     if (job) follow(job); else await loadSnapshots();
   } catch (e) { showError(e); }
-  await loadCurrent();
+  await loadCurrent(false);
   renderSnapshots();
-  loadEvents();
+  loadCurrent();
 })();
 </script>
 </body>

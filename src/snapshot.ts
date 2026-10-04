@@ -6,7 +6,7 @@ import {
   type SyncStatus, type VolumeState,
 } from './bluos.ts';
 import { discover } from './discovery.ts';
-import { devices } from './store.ts';
+import { devices, kv } from './store.ts';
 import { readSettings, type StoredSetting } from './settings.ts';
 
 export interface SnapshotMember {
@@ -29,8 +29,12 @@ export interface SnapshotZone {
   airplayName?: string;                     // AirPlay 2 receiver offered while this zone is active
 }
 
-/** Last setup read from the speakers (by refresh, scan or the end of a recall). */
-export const latest: { current?: Snapshot } = {};
+/** Last setup read from the speakers (refresh, scan, background update or end of a recall); persisted. */
+export const latest: { current?: Snapshot } = { current: kv.get<Snapshot>('current') };
+export function setLatest(current: Snapshot) {
+  latest.current = current;
+  kv.set('current', current);
+}
 
 export interface Snapshot {
   version: 1;
