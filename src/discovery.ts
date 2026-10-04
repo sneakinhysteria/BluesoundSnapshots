@@ -35,7 +35,10 @@ export function scanSubnets(): string[] {
     for (const a of addrs ?? []) {
       if (a.family !== 'IPv4' || a.internal || !a.cidr) continue;
       const bits = Number(a.cidr.split('/')[1]);
-      if (bits >= 22) found.push(a.cidr);
+      if (bits >= 22) {
+        const mask = (~0 << (32 - bits)) >>> 0;
+        found.push(`${intToIp(ipToInt(a.address) & mask)}/${bits}`); // network address, e.g. 192.168.1.0/24
+      }
     }
   }
   return [...new Set(found)];
