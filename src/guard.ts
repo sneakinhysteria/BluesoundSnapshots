@@ -47,7 +47,12 @@ const sequences = new Map<string, Seq[]>();   // by MAC, last 24 h
 const patterns = new Map<string, Pattern>();  // by MAC
 const pending = new Map<string, VolumeChange[]>();
 // Later reference points than the learned chain: a recognised drift or a TV start after a long pause.
-const anchors = new Map<string, number>();
+// Persisted, so a restart of the app doesn't lose the rhythm.
+const anchors = new Map<string, number>(Object.entries(kv.get<Record<string, number>>('guardAnchors') ?? {}));
+const setAnchor = (mac: string, t: number) => {
+  anchors.set(mac, t);
+  kv.set('guardAnchors', Object.fromEntries(anchors));
+};
 
 function setPattern(mac: string, p: Pattern | undefined) {
   if (!p) { patterns.delete(mac); return; }
@@ -145,7 +150,7 @@ async function judge(changes: VolumeChange[]) {
 
   (sequences.get(seq.mac) ?? sequences.set(seq.mac, []).get(seq.mac)!).push(seq);
   const automaticNow = rhythm || (burst && (before?.bursty ?? false));
-  if (automaticNow) anchors.set(seq.mac, seq.t); // restart the rhythm from every recognised drift
+  if (automaticNow) setAnchor(seq.mac, seq.t); // restart the rhythm from every recognised drift
   const learned = analyze(seq.mac);
   setPattern(seq.mac, learned);
   if (!before && learned) {
@@ -196,6 +201,12 @@ export function seedGuard() {
       list.push(Object.assign({ mac: e.mac, host: '', player: e.player, t, from: Number(m[1]), to: Number(m[2]), steps: 1, minGap: Infinity }, { lastT: t }));
     }
   }
+  // Fallback for anchors: the last drift the guard recognised (logged ~1.5 s after the drift began).
+  for (const e of events.list(500, 'guard')) {
+    if (!/^(undone|automatic change detected|drift)/.test(e.detail)) continue;
+    const t = new Date(e.t).getTime() - COLLECT_MS;
+    if (t > (anchors.get(e.mac) ?? 0)) setAnchor(e.mac, t);
+  }
   for (const mac of sequences.keys()) setPattern(mac, analyze(mac));
 }
 
@@ -207,7 +218,7 @@ export function seedGuard() {
 export function onTvStart(mac: string, t = Date.now()) {
   const p = patterns.get(mac);
   if (!p || t - p.anchor <= MAX_CYCLES * p.periodMs) return;
-  anchors.set(mac, t);
+  setAnchor(mac, t);
   p.anchor = t;
   events.add({ mac, player: p.player, kind: 'guard', detail: `TV started: expecting CEC drift from ${new Date(t + p.periodMs).toLocaleTimeString('en-GB', { timeZone: process.env.TZ || 'UTC' })}` });
 }

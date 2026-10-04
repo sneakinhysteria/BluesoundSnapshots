@@ -14,7 +14,7 @@ export interface TvStartConfig {
   inputs: string[];     // input names (as shown in BluOS); empty = names containing TV, HDMI or ARC
 }
 
-export interface PlaybackInfo { state: string; service: string; inputId: string; title: string }
+export interface PlaybackInfo { state: string; service: string; inputId: string; title: string; format: string }
 
 const SETTLE_MS = 3000;
 const PROTECT_MS = 90_000;
@@ -50,14 +50,16 @@ async function apply(mac: string, host: string, player: string, input: string) {
 
 /** Called by the monitor when a player's playback status changes. */
 export function onPlaybackChange(mac: string, host: string, player: string, p: PlaybackInfo) {
-  const key = p.service === 'Capture' ? `${p.inputId}|${p.title}` : p.service;
+  // A TV switched off often leaves the soundbar on its input without an audio format (and muted);
+  // audio appearing again on that input counts as a TV start, like switching to the input.
+  const key = p.service === 'Capture' ? `${p.inputId}|${p.title}|${p.format ? 'audio' : 'none'}` : p.service;
   const prev = lastInput.get(mac);
   lastInput.set(mac, key);
   if (p.service !== 'Capture' || !p.title) return;
   if (!knownInputs.has(p.title)) { knownInputs.add(p.title); kv.set('captureInputs', [...knownInputs]); }
   // First observation after a restart is not a switch.
   if (prev === undefined || prev === key || !isTvInput(p.title)) return;
-  if (!['stream', 'play'].includes(p.state)) return;
+  if (!['stream', 'play'].includes(p.state) || !p.format) return;
   onTvStart(mac);
   if (config.mode === 'off') return;
   setTimeout(() => apply(mac, host, player, p.title).catch((e) =>

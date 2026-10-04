@@ -76,7 +76,10 @@ function watch(mac: string, host: string, name: string) {
     const desc = [s.state, s.service, s.inputId, s.title1, s.streamFormat, s.quality].map(text).filter(Boolean).join(' | ');
     if (desc !== input) {
       log('playback', desc || '(idle)');
-      onPlaybackChange(mac, w.host, w.name, { state: text(s.state), service: text(s.service), inputId: text(s.inputId), title: text(s.title1) });
+      onPlaybackChange(mac, w.host, w.name, {
+        state: text(s.state), service: text(s.service), inputId: text(s.inputId), title: text(s.title1),
+        format: text(s.streamFormat) || text(s.quality),
+      });
     }
     input = desc;
   });
