@@ -482,18 +482,33 @@ document.querySelector('.tabs').addEventListener('click', (ev) => {
 });
 $('#scan').addEventListener('click', () => { showError(null); loadSpeakers(true); });
 
+const eventLine = (e) => {
+  const t = new Date(e.t);
+  return `<div>${t.toLocaleDateString()} ${t.toLocaleTimeString()}  ${esc(e.player)}  ${e.kind === 'volume' ? 'Volume' : 'Playback'}: ${esc(e.detail)}</div>`;
+};
+
 async function loadEvents() {
   try {
     const list = await api('GET', `/api/events?limit=300${$('#volOnly').checked ? '&kind=volume' : ''}`);
     const el = $('#events');
     el.className = 'log' + (list.length ? '' : ' empty');
-    el.innerHTML = list.length ? list.map((e) => {
-      const t = new Date(e.t);
-      return `<div>${t.toLocaleDateString()} ${t.toLocaleTimeString()}  ${esc(e.player)}  ${e.kind === 'volume' ? 'Volume' : 'Playback'}: ${esc(e.detail)}</div>`;
-    }).join('') : 'No changes recorded yet';
+    el.innerHTML = list.length ? list.map(eventLine).join('') : 'No changes recorded yet';
   } catch (e) { $('#events').textContent = e.message; }
 }
-setInterval(() => { if (!document.hidden) loadEvents(); }, 15_000);
+
+// New entries arrive live; the periodic reload covers dropped connections.
+function liveEvents() {
+  const es = new EventSource('/api/events/stream');
+  es.onmessage = (msg) => {
+    const e = JSON.parse(msg.data);
+    if ($('#volOnly').checked && e.kind !== 'volume') return;
+    const el = $('#events');
+    if (el.classList.contains('empty')) { el.className = 'log'; el.innerHTML = ''; }
+    el.insertAdjacentHTML('afterbegin', eventLine(e));
+  };
+}
+liveEvents();
+setInterval(() => { if (!document.hidden) loadEvents(); }, 60_000);
 
 $('#save').addEventListener('submit', async (ev) => {
   ev.preventDefault(); showError(null);

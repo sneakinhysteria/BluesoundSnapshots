@@ -101,6 +101,12 @@ export const devices = {
   },
 };
 
+import { EventEmitter } from 'node:events';
+
+/** Emits 'event' with each new PlayerEvent (live updates for the UI). */
+export const eventBus = new EventEmitter();
+eventBus.setMaxListeners(100);
+
 export interface PlayerEvent { id: number; t: string; mac: string; player: string; kind: string; detail: string }
 
 const EVENT_RETENTION_DAYS = 30;
@@ -108,8 +114,10 @@ let insertsSincePrune = 0;
 
 export const events = {
   add(e: Omit<PlayerEvent, 'id' | 't'>) {
-    db.prepare('INSERT INTO events (t, mac, player, kind, detail) VALUES (?, ?, ?, ?, ?)')
-      .run(new Date().toISOString(), e.mac, e.player, e.kind, e.detail);
+    const t = new Date().toISOString();
+    const r = db.prepare('INSERT INTO events (t, mac, player, kind, detail) VALUES (?, ?, ?, ?, ?)')
+      .run(t, e.mac, e.player, e.kind, e.detail);
+    eventBus.emit('event', { id: Number(r.lastInsertRowid), t, ...e } satisfies PlayerEvent);
     if (++insertsSincePrune >= 500) {
       insertsSincePrune = 0;
       db.prepare('DELETE FROM events WHERE t < ?').run(new Date(Date.now() - EVENT_RETENTION_DAYS * 86_400_000).toISOString());

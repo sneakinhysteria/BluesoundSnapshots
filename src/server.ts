@@ -9,7 +9,7 @@ import { startLsdp } from './lsdp.ts';
 import { speakerList } from './speakers.ts';
 import { discover, probeHosts, scanSubnets } from './discovery.ts';
 import { getJob, lastJob, runningJob, startRecall } from './recall.ts';
-import { devices, events, snapshots } from './store.ts';
+import { devices, eventBus, events, snapshots, type PlayerEvent } from './store.ts';
 
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info' } });
 
@@ -76,6 +76,16 @@ app.get<{ Querystring: { scan?: string } }>('/api/speakers', async (req) => {
     afterRead(await captureSnapshot(lan));
   }
   return { subnets: scanSubnets(), scan: process.env.BLUOS_SCAN !== 'off', speakers: speakerList(latest.current) };
+});
+
+// Live activity log (Server-Sent Events).
+app.get('/api/events/stream', (req, reply) => {
+  reply.hijack();
+  reply.raw.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' });
+  const send = (e: PlayerEvent) => reply.raw.write(`data: ${JSON.stringify(e)}\n\n`);
+  const ping = setInterval(() => reply.raw.write(': ping\n\n'), 25_000); // keeps proxies from closing it
+  eventBus.on('event', send);
+  req.raw.on('close', () => { clearInterval(ping); eventBus.off('event', send); });
 });
 
 app.get('/api/airplay', async () => ({ available: airplayAvailable(), receivers: airplayStatus() }));
