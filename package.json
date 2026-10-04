@@ -2,6 +2,7 @@
   "name": "bluesound-snapshot",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "description": "Store and recall BluOS speaker setups (fixed groups, home cinema, sub pairing)",
   "type": "module",
   "engines": { "node": ">=22.18" },
