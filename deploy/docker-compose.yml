@@ -17,4 +17,8 @@ services:
       # AVAHI_INTERFACES: "eth0"          # interfaces AirPlay receivers are announced on
     volumes:
       - ./data:/data
+      # Host's D-Bus: AirPlay receivers are announced by the host's Avahi (Unraid, most Linux
+      # distributions). Without it the container runs its own Avahi, which clashes with a host
+      # Avahi on the same IP address. Remove this line only if the host has no Avahi.
+      - /var/run/dbus:/var/run/dbus
     restart: unless-stopped

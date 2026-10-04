@@ -48,6 +48,7 @@ Docker tab → Add Container, then set:
 | Network Type | `Host` |
 | WebUI | `http://[IP]:[PORT:8095]/` |
 | Path `/data` | `/mnt/user/appdata/bluesound-snapshot` |
+| Path `/var/run/dbus` | `/var/run/dbus` (host's D-Bus, for AirPlay announcements) |
 | Variable `PORT` | `8095` |
 | Variable `TZ` | your time zone, e.g. `Europe/Berlin` |
 
@@ -66,8 +67,10 @@ All settings are optional; defaults are detected automatically.
 | `BLUOS_SUBNETS` | auto | Comma-separated subnets to scan for players (/22 or smaller), e.g. `192.168.1.0/24` |
 | `BLUOS_SCAN` | on | `off` disables the subnet scan (LSDP and known addresses only) |
 | `PUBLIC_URL` | auto | Base URL the speakers use to fetch streams from this app, e.g. `http://192.168.1.10:8095` |
-| `AVAHI_INTERFACES` | default-route interface | Interfaces AirPlay receivers are announced on, e.g. `br0` |
-| `AVAHI_HOSTNAME` | `bluesound-snapshots` | mDNS host name of the container (must differ from the host's own name) |
+| `AVAHI_INTERFACES` | default-route interface | Own Avahi only: interfaces AirPlay receivers are announced on, e.g. `br0` |
+| `AVAHI_HOSTNAME` | `bluesound-snapshots` | Own Avahi only: mDNS host name of the container |
+
+**AirPlay announcements**: mount the host's D-Bus (`/var/run/dbus:/var/run/dbus`, included in the compose file and Unraid template) so the receivers are announced by the host's Avahi. With host networking, a second Avahi inside the container fights the host's one over the address records; both rename themselves ("Server-2", "-3", …) until the host's stops answering. If that happened, restart the host's Avahi (Unraid: `/etc/rc.d/rc.avahidaemon restart`). Without the mount (hosts without Avahi) the container runs its own.
 | `DATA_DIR` | `/data` | Database location |
 
 **Discovery**: players are found via LSDP (the Bluesound broadcast protocol, UDP 11430), previously known addresses, group members reported by their leader, and a scan of the host's local subnets. Some devices (1st-gen Pulse Flex, Pulse Sub+) don't announce themselves via LSDP or mDNS and are only found by the scan. Docker, VM and VPN interfaces are ignored.
