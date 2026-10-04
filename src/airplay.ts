@@ -4,6 +4,8 @@
 // Session hooks (start/stop/volume) call back into /internal/airplay/<id>/<event>.
 
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { clearNowPlaying, nowPlaying, nowPlayingBus, readMetadataPipe } from './metadata.ts';
 import { writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -35,6 +37,8 @@ export const setAirplayLogger = (fn: (msg: string) => void) => { log = fn; };
 const idOf = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'airplay';
 const quote = (s: string) => `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 
+const metadataPipe = (id: string) => join(tmpdir(), `shairport-${id}-metadata`);
+
 function config(b: Omit<Bridge, 'proc' | 'sinks' | 'playing'>): string {
   const hook = (event: string) => quote(`${HOOK} ${b.id} ${event}`);
   return `general = {
@@ -49,6 +53,12 @@ stdout = {
   output_rate = ${PCM.rate};
   output_format = "S16_LE";
   output_channels = ${PCM.channels};
+};
+metadata = {
+  enabled = "yes";
+  include_cover_art = "yes";
+  pipe_name = ${quote(metadataPipe(b.id))};
+  pipe_timeout = 5000;
 };
 sessioncontrol = {
   run_this_before_play_begins = ${hook('start')};
@@ -67,6 +77,8 @@ function start(name: string, leaderMac: string) {
   while (used.has(index)) index++;
   const conf = join(tmpdir(), `shairport-${id}.conf`);
   writeFileSync(conf, config({ id, name, leaderMac, index }));
+  const pipe = metadataPipe(id);
+  if (!existsSync(pipe)) spawnSync('mkfifo', [pipe]);
   const proc = spawn('shairport-sync', ['-c', conf], { stdio: ['ignore', 'pipe', 'pipe'] });
   const bridge: Bridge = { id, name, leaderMac, index, proc, sinks: new Set(), playing: false };
   proc.stdout!.on('data', (chunk: Buffer) => {
@@ -78,11 +90,13 @@ function start(name: string, leaderMac: string) {
     if (bridges.get(id) === bridge) bridges.delete(id);
   });
   bridges.set(id, bridge);
+  readMetadataPipe(id, pipe, () => bridges.get(id) === bridge);
   log(`AirPlay receiver "${name}" started`);
 }
 
 function stop(b: Bridge) {
   bridges.delete(b.id);
+  clearNowPlaying(b.id);
   b.proc.kill();
   for (const s of b.sinks) s.end();
   log(`AirPlay receiver "${b.name}" stopped`);
@@ -109,7 +123,10 @@ export function reconcileAirplay(current = lastCurrent) {
 }
 
 export function airplayStatus() {
-  return [...bridges.values()].map((b) => ({ id: b.id, name: b.name, leaderMac: b.leaderMac, playing: b.playing }));
+  return [...bridges.values()].map((b) => ({
+    id: b.id, name: b.name, leaderMac: b.leaderMac, playing: b.playing,
+    stream: `/stream/airplay/${b.id}.flac`, nowPlaying: nowPlaying(b.id) ?? null,
+  }));
 }
 
 export function pcmSource(id: string) {
@@ -145,10 +162,12 @@ export async function airplayEvent(id: string, event: string, arg?: string) {
   const host = await leaderHost(b.leaderMac);
   if (event === 'start') {
     b.playing = true;
+    nowPlayingBus.emit('update', b.id, nowPlaying(b.id));
     log(`AirPlay "${b.name}": playback started`);
     await bluosGet(host, '/Play', { url: `${selfUrl(host)}/stream/airplay/${b.id}.flac` }, 15_000);
   } else if (event === 'stop') {
     b.playing = false;
+    nowPlayingBus.emit('update', b.id, nowPlaying(b.id));
     log(`AirPlay "${b.name}": playback ended`);
     // Only stop the player if it is still playing this bridge, not another source.
     const status = await bluosGet(host, '/Status');

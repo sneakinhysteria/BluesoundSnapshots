@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { applyEdits, backfillMeta, captureSnapshot, carryOver, isActive, latest, setLatest, type Snapshot, type ZoneEdit } from './snapshot.ts';
 import { airplayAvailable, airplayEvent, airplayStatus, pcmSource, reconcileAirplay, setAirplayLogger, stopAllAirplay } from './airplay.ts';
 import { registerStreams } from './stream.ts';
+import { cover, nowPlaying, nowPlayingBus, type NowPlaying } from './metadata.ts';
 import { startMonitor } from './monitor.ts';
 import { startLsdp } from './lsdp.ts';
 import { guardInfo, seedGuard, setGuardMode, type GuardMode } from './guard.ts';
@@ -105,7 +106,45 @@ app.put<{ Body: Partial<TvStartConfig> }>('/api/tvstart', async (req) => {
   return tvStartConfig();
 });
 
+// AirPlay now-playing metadata, readable from other pages (e.g. an artwork display) via CORS.
+app.addHook('onSend', async (req, reply) => {
+  if (req.url.startsWith('/api/airplay')) reply.header('access-control-allow-origin', '*');
+});
+
 app.get('/api/airplay', async () => ({ available: airplayAvailable(), receivers: airplayStatus() }));
+
+const withCover = (id: string, np?: NowPlaying) =>
+  np ? { ...np, cover: np.coverId ? `/api/airplay/${id}/cover?v=${np.coverId}` : null } : null;
+
+app.get<{ Params: { id: string } }>('/api/airplay/:id/nowplaying', async (req) => {
+  const r = airplayStatus().find((x) => x.id === req.params.id);
+  if (!r) throw Object.assign(new Error('No such AirPlay receiver'), { statusCode: 404 });
+  return { id: r.id, name: r.name, playing: r.playing, ...withCover(r.id, nowPlaying(r.id)) };
+});
+
+app.get<{ Params: { id: string } }>('/api/airplay/:id/cover', async (req, reply) => {
+  const c = cover(req.params.id);
+  if (!c) throw Object.assign(new Error('No cover'), { statusCode: 404 });
+  reply.header('content-type', c.mime).header('cache-control', 'public, max-age=86400');
+  return c.data;
+});
+
+// Live updates of all receivers' now-playing data (Server-Sent Events).
+app.get('/api/airplay/stream', (req, reply) => {
+  reply.hijack();
+  reply.raw.writeHead(200, {
+    'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive',
+    'access-control-allow-origin': '*',
+  });
+  const send = (id: string, np?: NowPlaying) => {
+    const r = airplayStatus().find((x) => x.id === id);
+    reply.raw.write(`data: ${JSON.stringify({ id, name: r?.name, playing: r?.playing ?? false, ...withCover(id, np) })}\n\n`);
+  };
+  for (const r of airplayStatus()) send(r.id, nowPlaying(r.id));
+  const ping = setInterval(() => reply.raw.write(': ping\n\n'), 25_000);
+  nowPlayingBus.on('update', send);
+  req.raw.on('close', () => { clearInterval(ping); nowPlayingBus.off('update', send); });
+});
 
 // Session hooks from shairport-sync (docker/airplay-hook.sh), local only.
 app.get<{ Params: { id: string; event: string }; Querystring: { v?: string } }>('/internal/airplay/:id/:event', async (req, reply) => {

@@ -83,6 +83,17 @@ All settings are optional; defaults are detected automatically.
 
 Enter an *AirPlay name* in a setup's edit form. While that setup is active, an AirPlay 2 receiver with this name is offered (shairport-sync); the audio is streamed to the group as FLAC. Volume from the iPhone/iPad is applied to the BluOS player. Expect ~5–6 s delay (fine for music, not for video). AirPlay itself is limited to CD-quality audio.
 
+BluOS only sees an untitled stream, so the app exposes what the AirPlay sender provides (title, artist, album, cover, progress) for other displays, with CORS enabled:
+
+| Method | Path | |
+|---|---|---|
+| GET | `/api/airplay` | Receivers incl. `stream` path and `nowPlaying` |
+| GET | `/api/airplay/<id>/nowplaying` | `title`, `artist`, `album`, `durationS`, `positionS` (at `positionAt`), `cover` URL, `playing` |
+| GET | `/api/airplay/<id>/cover` | Cover image |
+| GET | `/api/airplay/stream` | Live updates of all receivers (Server-Sent Events) |
+
+A display can tell that a BluOS player is playing a receiver when the player's stream URL ends with the receiver's `stream` path.
+
 ### CEC volume protection (Helpers tab)
 
 Some TVs change the soundbar volume over HDMI-CEC by themselves: at power-on, for "volume sync", or because of firmware bugs. Example: a Philips 58PUS8506 sent a CEC volume step every ~15 min 01 s, single or as a burst of three (first two ~0.13 s apart); for months upwards, later downwards. The Activity log shows such changes with `source: CEC`.
