@@ -64,8 +64,10 @@
   .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 8px; overflow-x: auto; }
   .tabs button { border: none; border-bottom: 2px solid transparent; border-radius: 0; padding: 10px 12px; color: var(--muted); white-space: nowrap; }
   .tabs button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
-  .speaker-table td { padding: 8px 8px 8px 0; }
+  .table-scroll { overflow-x: auto; }
+  .speaker-table td { padding: 10px 16px 10px 0; vertical-align: top; white-space: nowrap; }
   .speaker-table td:first-child { color: var(--text); width: auto; }
+  .speaker-table td:last-child { padding-right: 0; }
   .speaker-table .sub { color: var(--muted); font-size: .8rem; }
   .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; background: var(--muted); }
   .dot.on { background: var(--ok); }
@@ -529,12 +531,14 @@ async function loadSpeakers(scan = false) {
         If they are in another subnet, set <code>BLUOS_SUBNETS</code> (e.g. <code>192.168.1.0/24</code>).`;
     } else {
       el.className = 'card';
-      el.innerHTML = `<table class="speaker-table">${r.speakers.map((p) => `<tr>
-        <td><span class="dot${p.reachable ? ' on' : ''}"></span><b>${esc(p.name)}</b><div class="sub">${esc(p.model)}${p.modelCode && p.modelCode !== p.model ? ' (' + esc(p.modelCode) + ')' : ''}${p.version ? ' · BluOS ' + esc(p.version) : ''}</div></td>
-        <td>${esc(p.role)}<div class="sub">${p.via
-          ? `${esc(p.ip)} · Direct Connect via ${esc(p.via)}`
-          : esc(p.ip)} · ${esc(p.mac)}</div></td>
-        <td class="sub">${p.reachable ? 'found via ' + esc(p.foundBy || 'known address') : 'last seen ' + timeAgo(p.lastSeen)}</td></tr>`).join('')}</table>`;
+      el.innerHTML = `<div class="table-scroll"><table class="speaker-table">${r.speakers.map((p) => `<tr>
+        <td><span class="dot${p.reachable ? ' on' : ''}"></span><b>${esc(p.name)}</b>
+          <div class="sub">${esc(p.model)}${p.modelCode && p.modelCode !== p.model ? ' (' + esc(p.modelCode) + ')' : ''}</div>
+          ${p.version ? `<div class="sub">BluOS ${esc(p.version)}</div>` : ''}</td>
+        <td>${esc(p.role)}<div class="sub">${esc(p.ip)} · ${esc(p.mac)}</div></td>
+        <td>${p.via ? `Direct Connect via ${esc(p.via)}` : 'LAN'}
+          <div class="sub">${p.reachable ? 'found via ' + esc(p.foundBy || 'known address') : 'last seen ' + timeAgo(p.lastSeen)}</div></td>
+      </tr>`).join('')}</table></div>`;
     }
     $('#scanInfo').textContent = r.scan
       ? `Discovery: LSDP broadcast, known addresses and a scan of ${r.subnets.join(', ') || 'no subnet (none detected)'}.`
