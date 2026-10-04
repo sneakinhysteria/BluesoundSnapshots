@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { bluosGet, bluosPost, setSlaveLevel, setVolume, syncStatus, type SyncStatus } from './bluos.ts';
 import { selfUrl } from './stream.ts';
+import { expectVolume } from './origin.ts';
 import { reconcileAirplay } from './airplay.ts';
 import { discover, probeHosts } from './discovery.ts';
 import { captureSnapshot, isSurround, macResolver, setLatest, resolveMac, zoneKey, zoneMacs, type Snapshot, type SnapshotZone } from './snapshot.ts';
@@ -162,6 +163,7 @@ async function build(z: SnapshotZone, lan: Map<string, SyncStatus>, log: Log) {
 // complete in SyncStatus yet stay in "connecting" forever; only a restart of its speakers helps.
 async function playbackWorks(leaderHost: string, log: Log): Promise<boolean> {
   log('Checking playback (silent)');
+  expectVolume(leaderHost, 0, 'Recall (silent check)');
   await bluosGet(leaderHost, '/Volume', { level: 0, tell_slaves: 0 });
   try {
     await bluosGet(leaderHost, '/Play', { url: `${selfUrl(leaderHost)}/stream/silence.flac` }, 15_000);

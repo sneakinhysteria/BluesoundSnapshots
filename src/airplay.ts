@@ -8,6 +8,7 @@ import { writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { bluosGet, syncStatus } from './bluos.ts';
+import { expectVolume } from './origin.ts';
 import { probeHosts } from './discovery.ts';
 import { selfUrl, PCM } from './stream.ts';
 import { zoneKey, type Snapshot } from './snapshot.ts';
@@ -156,7 +157,10 @@ export async function airplayEvent(id: string, event: string, arg?: string) {
     const level = toLevel(Number(arg.split(',')[0]));
     if (!Number.isFinite(level)) return;
     clearTimeout(volumeTimer);
-    volumeTimer = setTimeout(() => bluosGet(host, '/Volume', { level, tell_slaves: 0 }).catch(() => {}), 250);
+    volumeTimer = setTimeout(() => {
+      expectVolume(host, level, 'AirPlay');
+      bluosGet(host, '/Volume', { level, tell_slaves: 0 }).catch(() => {});
+    }, 250);
   }
 }
 

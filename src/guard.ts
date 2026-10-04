@@ -5,6 +5,7 @@
 
 import { bluosGet } from './bluos.ts';
 import { events, kv } from './store.ts';
+import { expectVolume } from './origin.ts';
 
 export interface VolumeChange { mac: string; host: string; player: string; from: number; to: number; source: string; t: number }
 
@@ -74,6 +75,7 @@ async function judge(seq: VolumeChange[]) {
     return;
   }
   try {
+    expectVolume(first.host, first.from, 'Guard');
     await bluosGet(first.host, '/Volume', { level: first.from, tell_slaves: 0 });
     state.undone++;
     state.lastAction = new Date().toISOString();

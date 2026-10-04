@@ -7,6 +7,7 @@ import { bluosGet } from './bluos.ts';
 import { discover, probeHosts } from './discovery.ts';
 import { devices, events } from './store.ts';
 import { onVolumeChange } from './guard.ts';
+import { claimVolume } from './origin.ts';
 
 const LONG_POLL_S = 100;
 const RESCAN_MS = 5 * 60_000;
@@ -51,10 +52,11 @@ function watch(mac: string, host: string, name: string) {
     if (!first && vol && (now.level !== vol.level || now.mute !== vol.mute)) {
       const parts = [`${vol.level} → ${now.level}`, `${v.db} dB`];
       if (now.mute !== vol.mute) parts.push(now.mute === '1' ? 'muted' : 'unmuted');
-      parts.push(`source: ${v.source || '(none)'}`);
+      const source = (!v.source && claimVolume(w.host, Number(now.level))) || v.source || '';
+      parts.push(`source: ${source || '(none)'}`);
       log('volume', parts.join(', '));
       if (now.mute === vol.mute) {
-        onVolumeChange({ mac, host: w.host, player: w.name, from: Number(vol.level), to: Number(now.level), source: v.source ?? '', t: Date.now() });
+        onVolumeChange({ mac, host: w.host, player: w.name, from: Number(vol.level), to: Number(now.level), source, t: Date.now() });
       }
     }
     vol = now;

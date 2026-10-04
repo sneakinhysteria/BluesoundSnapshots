@@ -2,6 +2,7 @@
 // Command shapes are taken from captures of the BluOS controller app (docs/capture).
 
 import { XMLParser } from 'fast-xml-parser';
+import { expectVolume } from './origin.ts';
 
 export const BLUOS_PORT = 11000;
 
@@ -150,9 +151,11 @@ export async function getVolume(host: string): Promise<VolumeState> {
   };
 }
 
-export async function setVolume(host: string, v: VolumeState) {
+export async function setVolume(host: string, v: VolumeState, origin = 'Recall') {
+  expectVolume(host, v.mute ? (v.muteLevel ?? v.level) : v.level, origin);
   if (v.mute) {
     await bluosGet(host, '/Volume', { level: v.muteLevel ?? v.level, tell_slaves: 0 });
+    expectVolume(host, 0, origin); // muting reports level 0
     await bluosGet(host, '/Volume', { mute: 1, tell_slaves: 0 });
   } else {
     await bluosGet(host, '/Volume', { level: v.level, tell_slaves: 0 });
