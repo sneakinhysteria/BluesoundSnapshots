@@ -532,7 +532,7 @@ async function loadSpeakers(scan = false) {
       el.innerHTML = `<table class="speaker-table">${r.speakers.map((p) => `<tr>
         <td><span class="dot${p.reachable ? ' on' : ''}"></span><b>${esc(p.name)}</b><div class="sub">${esc(p.model)}${p.modelCode && p.modelCode !== p.model ? ' (' + esc(p.modelCode) + ')' : ''}${p.version ? ' · BluOS ' + esc(p.version) : ''}</div></td>
         <td>${esc(p.role)}<div class="sub">${p.via
-          ? `${esc(p.ip)} · Direct Connect via ${esc(p.via)} · LAN ${esc(p.lanIp)}`
+          ? `${esc(p.ip)} · Direct Connect via ${esc(p.via)}`
           : esc(p.ip)} · ${esc(p.mac)}</div></td>
         <td class="sub">${p.reachable ? 'found via ' + esc(p.foundBy || 'known address') : 'last seen ' + timeAgo(p.lastSeen)}</td></tr>`).join('')}</table>`;
     }

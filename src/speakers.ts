@@ -10,7 +10,6 @@ export interface SpeakerInfo {
   model: string;
   modelCode: string;
   ip: string;
-  lanIp: string;          // LAN address (differs from ip while on a soundbar's Direct Connect network)
   via?: string;           // name of the soundbar it is connected to directly
   version: string;
   reachable: boolean;
@@ -52,7 +51,7 @@ export function speakerList(current?: Snapshot): SpeakerInfo[] {
     if (direct || surround) reachable ||= fresh(zone!.leader.mac); // only reachable through the leader
     return {
       mac: d.mac, name: d.name, model: d.model, modelCode: d.modelCode,
-      ip: direct ? d.directIp : d.lastIp, lanIp: d.lastIp,
+      ip: direct ? d.directIp : d.lastIp,
       via: direct ? all.find((x) => x.mac === zone!.leader.mac)?.name : undefined, version: d.version,
       reachable, role, foundBy: d.foundBy, lastSeen: d.seenAt,
     };
