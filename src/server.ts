@@ -113,13 +113,19 @@ app.addHook('onSend', async (req, reply) => {
 
 app.get('/api/airplay', async () => ({ available: airplayAvailable(), receivers: airplayStatus() }));
 
-const withCover = (id: string, np?: NowPlaying) =>
-  np ? { ...np, cover: np.coverId ? `/api/airplay/${id}/cover?v=${np.coverId}` : null } : null;
+// cover: path on this server; coverUrl: full URL (for Home Assistant's entity_picture etc.),
+// built from the address the caller used to reach this app.
+const withCover = (id: string, np: NowPlaying | undefined, host?: string) => {
+  if (!np) return null;
+  const cover = np.coverId ? `/api/airplay/${id}/cover?v=${np.coverId}` : null;
+  const base = process.env.PUBLIC_URL?.replace(/\/$/, '') ?? (host ? `http://${host}` : '');
+  return { ...np, cover, coverUrl: cover && base ? base + cover : null };
+};
 
 app.get<{ Params: { id: string } }>('/api/airplay/:id/nowplaying', async (req) => {
   const r = airplayStatus().find((x) => x.id === req.params.id);
   if (!r) throw Object.assign(new Error('No such AirPlay receiver'), { statusCode: 404 });
-  return { id: r.id, name: r.name, playing: r.playing, ...withCover(r.id, nowPlaying(r.id)) };
+  return { id: r.id, name: r.name, playing: r.playing, ...withCover(r.id, nowPlaying(r.id), req.headers.host) };
 });
 
 app.get<{ Params: { id: string } }>('/api/airplay/:id/cover', async (req, reply) => {
@@ -138,7 +144,7 @@ app.get('/api/airplay/stream', (req, reply) => {
   });
   const send = (id: string, np?: NowPlaying) => {
     const r = airplayStatus().find((x) => x.id === id);
-    reply.raw.write(`data: ${JSON.stringify({ id, name: r?.name, playing: r?.playing ?? false, ...withCover(id, np) })}\n\n`);
+    reply.raw.write(`data: ${JSON.stringify({ id, name: r?.name, playing: r?.playing ?? false, ...withCover(id, np, req.headers.host) })}\n\n`);
   };
   for (const r of airplayStatus()) send(r.id, nowPlaying(r.id));
   const ping = setInterval(() => reply.raw.write(': ping\n\n'), 25_000);

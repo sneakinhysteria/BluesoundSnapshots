@@ -88,7 +88,7 @@ BluOS only sees an untitled stream, so the app exposes what the AirPlay sender p
 | Method | Path | |
 |---|---|---|
 | GET | `/api/airplay` | Receivers incl. `stream` path and `nowPlaying` |
-| GET | `/api/airplay/<id>/nowplaying` | `title`, `artist`, `album`, `durationS`, `positionS` (at `positionAt`), `cover` URL, `playing` |
+| GET | `/api/airplay/<id>/nowplaying` | `title`, `artist`, `album`, `durationS`, `positionS` (at `positionAt`), `cover` (path), `coverUrl` (full URL), `playing` |
 | GET | `/api/airplay/<id>/cover` | Cover image |
 | GET | `/api/airplay/stream` | Live updates of all receivers (Server-Sent Events) |
 
