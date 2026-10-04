@@ -114,7 +114,8 @@ async function readLive(leader: SyncStatus, macOfIp: (ip: string) => Promise<{ m
   };
   const leaderName = (leader.group && findGroup(root, 'player')?.['@displayName']) || leader.name;
   if (leader.group && leaderName !== leader.name) {
-    devices.upsert({ mac: leader.mac, name: leaderName, model: leader.model, lastIp: leader.host });
+    const prev = devices.list().find((d) => d.mac === leader.mac);
+    devices.upsert({ mac: leader.mac, name: leaderName, model: prev?.model ?? leader.model, lastIp: leader.host });
   }
   const seen = new Set<string>();
   const result: LiveSetting[] = [];

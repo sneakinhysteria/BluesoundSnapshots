@@ -65,6 +65,7 @@ export interface SyncStatus {
   name: string;
   model: string;
   modelName: string;
+  version: string;
   cls: string;
   channelMode?: string;
   distance?: number;
@@ -95,6 +96,7 @@ export function parseSyncStatus(host: string, xml: any): SyncStatus {
     name: s.name ?? '',
     model: s.model ?? '',
     modelName: s.modelName ?? '',
+    version: s.version ?? '',
     cls: s.class ?? '',
     channelMode: s.channelMode || undefined,
     distance: roundDistance(num(s.distance)),

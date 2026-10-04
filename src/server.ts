@@ -1,11 +1,13 @@
 import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
 import { join } from 'node:path';
-import { applyEdits, backfillMeta, captureSnapshot, carryOver, isActive, type Snapshot, type ZoneEdit } from './snapshot.ts';
+import { applyEdits, backfillMeta, captureSnapshot, carryOver, isActive, latest, type Snapshot, type ZoneEdit } from './snapshot.ts';
 import { airplayAvailable, airplayEvent, airplayStatus, pcmSource, reconcileAirplay, setAirplayLogger, stopAllAirplay } from './airplay.ts';
 import { registerStreams } from './stream.ts';
 import { startMonitor } from './monitor.ts';
 import { startLsdp } from './lsdp.ts';
+import { speakerList } from './speakers.ts';
+import { discover, scanSubnets } from './discovery.ts';
 import { getJob, runningJob, startRecall } from './recall.ts';
 import { events, snapshots } from './store.ts';
 
@@ -31,6 +33,7 @@ const cleanName = (name: unknown) => {
 };
 
 function afterRead(current: Snapshot) {
+  latest.current = current;
   reconcileAirplay(current);
   for (const s of snapshots.list()) {
     const filled = backfillMeta(s.data, current);
@@ -47,6 +50,15 @@ app.get('/api/current', async () => {
 
 app.get<{ Querystring: { limit?: string; kind?: string } }>('/api/events', async (req) =>
   events.list(Math.min(Number(req.query.limit ?? 200) || 200, 1000), req.query.kind || undefined));
+
+app.get<{ Querystring: { scan?: string } }>('/api/speakers', async (req) => {
+  if (req.query.scan) {
+    busy();
+    const lan = await discover();
+    afterRead(await captureSnapshot(lan));
+  }
+  return { subnets: scanSubnets(), scan: process.env.BLUOS_SCAN !== 'off', speakers: speakerList(latest.current) };
+});
 
 app.get('/api/airplay', async () => ({ available: airplayAvailable(), receivers: airplayStatus() }));
 

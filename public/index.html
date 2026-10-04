@@ -59,31 +59,64 @@
   .card.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
   .badge { display: inline-block; font-size: .75rem; font-weight: 600; color: var(--accent); border: 1px solid var(--accent);
     border-radius: 999px; padding: 1px 8px; margin-left: 8px; vertical-align: middle; }
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 8px; overflow-x: auto; }
+  .tabs button { border: none; border-bottom: 2px solid transparent; border-radius: 0; padding: 10px 12px; color: var(--muted); white-space: nowrap; }
+  .tabs button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+  .speaker-table td { padding: 8px 8px 8px 0; }
+  .speaker-table td:first-child { color: var(--text); width: auto; }
+  .speaker-table .sub { color: var(--muted); font-size: .8rem; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; background: var(--muted); }
+  .dot.on { background: var(--ok); }
   .card-error { color: var(--danger); margin-top: 12px; }
 </style>
 </head>
 <body>
 <main>
   <h1>Speaker Setups</h1>
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-tab="snapshots">Snapshots</button>
+    <button role="tab" data-tab="speakers">Speakers</button>
+    <button role="tab" data-tab="helpers">Helpers</button>
+    <button role="tab" data-tab="activity">Activity</button>
+  </nav>
   <div id="error" class="error-banner" hidden></div>
 
-  <div id="job" class="card" hidden></div>
+  <section data-panel="snapshots">
+    <div id="job" class="card" hidden></div>
+    <div class="section-head"><h2>Snapshots</h2></div>
+    <div id="snapshots"><div class="empty">Loading…</div></div>
 
-  <div class="section-head"><h2>Snapshots</h2></div>
-  <div id="snapshots"><div class="empty">Loading…</div></div>
+    <div class="section-head"><h2>Current setup</h2><button id="refresh" class="small">Refresh</button></div>
+    <div class="card">
+      <div id="current" class="empty">Reading speakers…</div>
+      <form id="save" class="row" style="margin-top:14px">
+        <input id="saveName" class="grow" placeholder="Snapshot name, e.g. Home Cinema" autocomplete="off" required>
+        <button class="primary" type="submit">Save</button>
+      </form>
+    </div>
+  </section>
 
-  <div class="section-head"><h2>Current setup</h2><button id="refresh" class="small">Refresh</button></div>
-  <div class="card">
-    <div id="current" class="empty">Reading speakers…</div>
-    <div id="airplay" class="meta" style="margin-top:10px" hidden></div>
-    <form id="save" class="row" style="margin-top:14px">
-      <input id="saveName" class="grow" placeholder="Snapshot name, e.g. Home Cinema" autocomplete="off" required>
-      <button class="primary" type="submit">Save</button>
-    </form>
-  </div>
-  <div class="section-head"><h2>Activity</h2>
-    <label class="meta"><input type="checkbox" id="volOnly"> volume only</label></div>
-  <div class="card"><div id="events" class="log empty" style="max-height:360px">Loading…</div></div>
+  <section data-panel="speakers" hidden>
+    <div class="section-head"><h2>Speakers</h2><button id="scan" class="small">Scan now</button></div>
+    <div id="speakers" class="card empty">Loading…</div>
+    <div id="scanInfo" class="hint"></div>
+  </section>
+
+  <section data-panel="helpers" hidden>
+    <div class="section-head"><h2>AirPlay receivers</h2></div>
+    <div class="card"><div id="airplay" class="empty">Loading…</div>
+      <div class="hint">Set an AirPlay name in a snapshot's edit form. The receiver is offered while that setup is active.</div></div>
+    <div class="section-head"><h2>Volume guard</h2></div>
+    <div class="card empty">Planned: undo volume changes from an unwanted source (see Activity for what changes the volume).</div>
+    <div class="section-head"><h2>TV audio re-sync</h2></div>
+    <div class="card empty">Planned: switch the soundbar's TV input off and on when the TV starts with a wrong sample rate.</div>
+  </section>
+
+  <section data-panel="activity" hidden>
+    <div class="section-head"><h2>Activity</h2>
+      <label class="meta"><input type="checkbox" id="volOnly"> volume only</label></div>
+    <div class="card"><div id="events" class="log empty" style="max-height:none">Loading…</div></div>
+  </section>
 </main>
 
 <script>
@@ -255,12 +288,7 @@ async function loadCurrent() {
     $('#current').className = '';
     $('#current').innerHTML = current.zones.map(zoneHtml).join('') || '<span class="empty">No speakers found</span>';
     if (!editing.size) renderSnapshots(); // don't discard unsaved edits
-    const ap = await api('GET', '/api/airplay');
-    const el = $('#airplay');
-    el.hidden = !ap.available;
-    el.textContent = ap.receivers.length
-      ? 'AirPlay receivers: ' + ap.receivers.map((r) => `${r.name}${r.playing ? ' (playing)' : ''}`).join(', ')
-      : 'No AirPlay receiver active';
+    loadAirplay();
   } catch (e) {
     $('#current').className = 'empty';
     $('#current').textContent = e.message;
@@ -373,6 +401,61 @@ $('#job').addEventListener('click', (ev) => { if (ev.target.closest('[data-act="
 $('#refresh').addEventListener('click', () => { showError(null); loadCurrent(); loadEvents(); });
 $('#volOnly').addEventListener('change', () => loadEvents());
 
+async function loadAirplay() {
+  try {
+    const ap = await api('GET', '/api/airplay');
+    const el = $('#airplay');
+    el.className = ap.receivers.length ? '' : 'empty';
+    el.innerHTML = !ap.available ? 'AirPlay is not available in this installation (shairport-sync missing).'
+      : ap.receivers.length ? ap.receivers.map((r) => `<div><span class="dot on"></span>${esc(r.name)}${r.playing ? ' — playing' : ' — ready'}</div>`).join('')
+      : 'No receiver active.';
+  } catch (e) { $('#airplay').textContent = e.message; }
+}
+
+function timeAgo(iso) {
+  const s = Math.round((Date.now() - new Date(iso)) / 1000);
+  return s < 90 ? 'just now' : s < 5400 ? `${Math.round(s / 60)} min ago` : s < 129600 ? `${Math.round(s / 3600)} h ago` : new Date(iso).toLocaleDateString();
+}
+
+async function loadSpeakers(scan = false) {
+  const btn = $('#scan');
+  btn.disabled = true; btn.textContent = scan ? 'Scanning…' : btn.textContent;
+  try {
+    const r = await api('GET', `/api/speakers${scan ? '?scan=1' : ''}`);
+    const el = $('#speakers');
+    if (!r.speakers.length) {
+      el.className = 'card empty';
+      el.innerHTML = `No speakers found. Check that the container uses <b>host networking</b> and runs in the same network as the speakers.
+        If they are in another subnet, set <code>BLUOS_SUBNETS</code> (e.g. <code>192.168.1.0/24</code>).`;
+    } else {
+      el.className = 'card';
+      el.innerHTML = `<table class="speaker-table">${r.speakers.map((p) => `<tr>
+        <td><span class="dot${p.reachable ? ' on' : ''}"></span><b>${esc(p.name)}</b><div class="sub">${esc(p.model)}${p.modelCode && p.modelCode !== p.model ? ' (' + esc(p.modelCode) + ')' : ''}${p.version ? ' · BluOS ' + esc(p.version) : ''}</div></td>
+        <td>${esc(p.role)}<div class="sub">${esc(p.ip)} · ${esc(p.mac)}</div></td>
+        <td class="sub">${p.reachable ? 'found via ' + esc(p.foundBy || 'known address') : 'last seen ' + timeAgo(p.lastSeen)}</td></tr>`).join('')}</table>`;
+    }
+    $('#scanInfo').textContent = r.scan
+      ? `Discovery: LSDP broadcast, known addresses and a scan of ${r.subnets.join(', ') || 'no subnet (none detected)'}.`
+      : 'Discovery: LSDP broadcast and known addresses (network scan disabled).';
+  } catch (e) { showError(e); }
+  btn.disabled = busy; btn.textContent = 'Scan now';
+}
+
+// ---- Tabs ----
+function showTab(name) {
+  if (!document.querySelector(`[data-panel="${name}"]`)) name = 'snapshots';
+  for (const b of document.querySelectorAll('.tabs button')) b.setAttribute('aria-selected', String(b.dataset.tab === name));
+  for (const p of document.querySelectorAll('[data-panel]')) p.hidden = p.dataset.panel !== name;
+  try { localStorage.setItem('tab', name); } catch {}
+  if (name === 'speakers') loadSpeakers();
+  if (name === 'helpers') loadAirplay();
+  if (name === 'activity') loadEvents();
+}
+document.querySelector('.tabs').addEventListener('click', (ev) => {
+  const b = ev.target.closest('[data-tab]'); if (b) showTab(b.dataset.tab);
+});
+$('#scan').addEventListener('click', () => { showError(null); loadSpeakers(true); });
+
 async function loadEvents() {
   try {
     const list = await api('GET', `/api/events?limit=300${$('#volOnly').checked ? '&kind=volume' : ''}`);
@@ -398,6 +481,9 @@ $('#save').addEventListener('submit', async (ev) => {
 });
 
 (async () => {
+  let tab = 'snapshots';
+  try { tab = localStorage.getItem('tab') || tab; } catch {}
+  showTab(tab);
   try {
     const job = await api('GET', '/api/jobs/running');
     if (job) follow(job); else await loadSnapshots();

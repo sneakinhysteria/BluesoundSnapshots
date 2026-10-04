@@ -7,7 +7,7 @@ import { bluosGet, bluosPost, setSlaveLevel, setVolume, syncStatus, type SyncSta
 import { selfUrl } from './stream.ts';
 import { reconcileAirplay } from './airplay.ts';
 import { discover, probeHosts } from './discovery.ts';
-import { captureSnapshot, isSurround, macResolver, resolveMac, zoneKey, zoneMacs, type Snapshot, type SnapshotZone } from './snapshot.ts';
+import { captureSnapshot, isSurround, latest, macResolver, resolveMac, zoneKey, zoneMacs, type Snapshot, type SnapshotZone } from './snapshot.ts';
 import { diffSettings, restoreSettings } from './settings.ts';
 import { devices } from './store.ts';
 
@@ -276,6 +276,7 @@ async function recall(target: Snapshot, log: Log, job: Job) {
   const after = await captureSnapshot(await discover());
   job.differences.push(...compare(target, after));
   job.after = after;
+  latest.current = after;
   reconcileAirplay(after);
   if (job.differences.length) for (const d of job.differences) log(d, 'error');
   else log('Setup matches snapshot');

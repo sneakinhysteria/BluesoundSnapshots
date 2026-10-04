@@ -29,6 +29,9 @@ export interface SnapshotZone {
   airplayName?: string;                     // AirPlay 2 receiver offered while this zone is active
 }
 
+/** Last setup read from the speakers (by refresh, scan or the end of a recall). */
+export const latest: { current?: Snapshot } = {};
+
 export interface Snapshot {
   version: 1;
   capturedAt: string;
@@ -39,7 +42,11 @@ export async function resolveMac(leader: SyncStatus, m: { id: string; port: numb
   for (const p of lan.values()) if (p.host === m.id) return { mac: p.mac, name: p.name, model: p.modelName };
   try {
     const s = await memberSyncStatus(leader.host, m);
-    if (s.mac) return { mac: s.mac, name: s.name, model: s.modelName };
+    if (s.mac) {
+      const prev = devices.list().find((d) => d.mac === s.mac);
+      if (prev) devices.upsert({ mac: s.mac, name: prev.name, model: s.modelName || prev.model, modelCode: s.model, lastIp: prev.lastIp });
+      return { mac: s.mac, name: s.name, model: s.modelName };
+    }
   } catch {
     // fall back to the registry below
   }
