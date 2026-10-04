@@ -9,6 +9,14 @@ import { devices, events } from './store.ts';
 import { onVolumeChange } from './guard.ts';
 import { onPlaybackChange, onVolumeAfterStart } from './tvstart.ts';
 import { claimVolume } from './origin.ts';
+import { latest } from './snapshot.ts';
+
+// Name of the group a member belongs to, from the last read setup.
+function groupOf(mac: string): string | undefined {
+  const z = latest.current?.zones.find((x) => x.members.some((m) => m.mac === mac) || x.sub?.mac === mac
+    || x.dynamicSlaves.some((s) => s.mac === mac));
+  return z ? (z.groupName ?? z.leader.name) : undefined;
+}
 
 const LONG_POLL_S = 100;
 const RESCAN_MS = 5 * 60_000;
@@ -54,7 +62,9 @@ function watch(mac: string, host: string, name: string) {
       const parts = [`${vol.level} → ${now.level}`, `${v.db} dB`];
       if (now.mute !== vol.mute) parts.push(now.mute === '1' ? 'muted' : 'unmuted');
       const source = (!v.source && claimVolume(w.host, Number(now.level))) || v.source || '';
-      parts.push(`source: ${source || '(none)'}`);
+      // "Master": a group member mirroring its leader's volume, not a change of its own.
+      const group = source === 'Master' ? groupOf(mac) : undefined;
+      parts.push(source === 'Master' ? `follows group volume of "${group ?? 'leader'}"` : `source: ${source || '(none)'}`);
       log('volume', parts.join(', '));
       if (now.mute === vol.mute) {
         const change = { mac, host: w.host, player: w.name, from: Number(vol.level), to: Number(now.level), source, t: Date.now() };
