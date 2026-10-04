@@ -119,7 +119,15 @@ export function reconcileAirplay(current = lastCurrent) {
     const w = wanted.get(b.id);
     if (!w || w.leaderMac !== b.leaderMac || w.name !== b.name) stop(b);
   }
-  for (const [id, w] of wanted) if (!bridges.has(id)) start(w.name, w.leaderMac);
+  for (const [id, w] of wanted) {
+    if (bridges.has(id)) continue;
+    start(w.name, w.leaderMac);
+    // A restart ends AirPlay sessions without the stop hook: stop players left on the old stream.
+    leaderHost(w.leaderMac).then(async (host) => {
+      const st = await bluosGet(host, '/Status');
+      if (String(st?.status?.streamUrl ?? '').includes(`/stream/airplay/${id}`)) await bluosGet(host, '/Stop');
+    }).catch(() => {});
+  }
 }
 
 export function airplayStatus() {
@@ -133,6 +141,7 @@ export function pcmSource(id: string) {
   const b = bridges.get(id);
   if (!b) return undefined;
   return {
+    playing: b.playing,
     subscribe(sink: NodeJS.WritableStream) {
       b.sinks.add(sink);
       return () => b.sinks.delete(sink);

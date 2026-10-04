@@ -35,7 +35,7 @@ function dropWhenStalled(res: import('node:http').ServerResponse) {
   res.socket?.setTimeout(30_000, () => res.socket?.destroy());
 }
 
-type PcmSource = (id: string) => { subscribe(sink: NodeJS.WritableStream): () => void } | undefined;
+type PcmSource = (id: string) => { playing: boolean; subscribe(sink: NodeJS.WritableStream): () => void } | undefined;
 
 export function registerStreams(app: FastifyInstance, pcmSource: PcmSource) {
   // Very quiet noise (-70 dBFS), played at volume 0 to check that a group actually plays. Digital
@@ -54,6 +54,8 @@ export function registerStreams(app: FastifyInstance, pcmSource: PcmSource) {
   app.get<{ Params: { id: string } }>('/stream/airplay/:id', (req, reply) => {
     const source = pcmSource(req.params.id.replace(/\.flac$/, ''));
     if (!source) return reply.code(404).send({ message: 'No such AirPlay bridge' });
+    // Without an AirPlay session there is no audio; refusing keeps players from reconnecting forever.
+    if (!source.playing) return reply.code(503).send({ message: 'AirPlay receiver is not playing' });
     reply.hijack();
     // The input format is known: skip ffmpeg's input probing (~5 s of audio), which delayed the first
     // byte so long that BluOS stayed in "connecting".
