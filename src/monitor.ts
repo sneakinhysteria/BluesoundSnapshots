@@ -7,6 +7,7 @@ import { bluosGet } from './bluos.ts';
 import { discover, probeHosts } from './discovery.ts';
 import { devices, events } from './store.ts';
 import { onVolumeChange } from './guard.ts';
+import { onPlaybackChange, onVolumeAfterStart } from './tvstart.ts';
 import { claimVolume } from './origin.ts';
 
 const LONG_POLL_S = 100;
@@ -56,7 +57,9 @@ function watch(mac: string, host: string, name: string) {
       parts.push(`source: ${source || '(none)'}`);
       log('volume', parts.join(', '));
       if (now.mute === vol.mute) {
-        onVolumeChange({ mac, host: w.host, player: w.name, from: Number(vol.level), to: Number(now.level), source, t: Date.now() });
+        const change = { mac, host: w.host, player: w.name, from: Number(vol.level), to: Number(now.level), source, t: Date.now() };
+        onVolumeChange(change);
+        onVolumeAfterStart(change);
       }
     }
     vol = now;
@@ -71,7 +74,10 @@ function watch(mac: string, host: string, name: string) {
     if (!first && syncStat && ss !== syncStat) onGroupingChange();
     syncStat = ss;
     const desc = [s.state, s.service, s.inputId, s.title1, s.streamFormat, s.quality].map(text).filter(Boolean).join(' | ');
-    if (desc !== input) log('playback', desc || '(idle)');
+    if (desc !== input) {
+      log('playback', desc || '(idle)');
+      onPlaybackChange(mac, w.host, w.name, { state: text(s.state), service: text(s.service), inputId: text(s.inputId), title: text(s.title1) });
+    }
     input = desc;
   });
 }

@@ -5,7 +5,8 @@ Store and recall BluOS speaker setups with one button. BluOS lets a speaker belo
 - **Snapshots**: fixed groups (stereo pairs, home cinema with channel roles and speaker distances), subwoofer pairing, member and sub levels, audio and subwoofer settings (listening mode, tone controls, crossover, phase, …), volume and mute.
 - **Recall**: dissolves what differs, rebuilds the setup, restores levels and settings, checks silently that the group actually plays, and verifies the result.
 - **AirPlay 2 receiver** per setup for speakers without AirPlay 2 (e.g. 1st-gen Pulse Flex), active only while that setup is in place.
-- **Volume guard** that undoes volume changes a TV sends by itself over HDMI-CEC (e.g. periodic drift), without blocking the remote control.
+- **CEC volume protection**: learns volume changes a TV sends by itself over HDMI-CEC (e.g. periodic drift) and undoes them, without blocking the remote control.
+- **Volume when the TV starts**: fixed volume or a maximum when a player switches to the TV input.
 - **Activity log** of volume, input and format changes on all players (live).
 - Local only: uses the BluOS HTTP API (port 11000) on your network, no cloud account.
 
@@ -82,11 +83,24 @@ All settings are optional; defaults are detected automatically.
 
 Enter an *AirPlay name* in a setup's edit form. While that setup is active, an AirPlay 2 receiver with this name is offered (shairport-sync); the audio is streamed to the group as FLAC. Volume from the iPhone/iPad is applied to the BluOS player. Expect ~5–6 s delay (fine for music, not for video). AirPlay itself is limited to CD-quality audio.
 
-### Volume guard (Helpers tab)
+### CEC volume protection (Helpers tab)
 
-Some TVs send volume commands over HDMI-CEC on their own. Observed with a Philips 58PUS8506: every ~15 min 01 s a CEC volume step, either single or a burst of three (first two ~0.13 s apart); for months it went up, later down. The Activity log shows such changes with `source: CEC`.
+Some TVs change the soundbar volume over HDMI-CEC by themselves: at power-on, for "volume sync", or because of firmware bugs. Example: a Philips 58PUS8506 sent a CEC volume step every ~15 min 01 s, single or as a burst of three (first two ~0.13 s apart); for months upwards, later downwards. The Activity log shows such changes with `source: CEC`.
 
-The guard collects CEC volume changes for 1.5 s and treats a sequence as drift if two steps are less than 0.3 s apart (faster than remote clicks) or if it starts within ±20 s of the learned rhythm. Drift is undone by restoring the previous volume, in both directions. Remote clicks (single steps, >1 s apart, outside the rhythm) are left alone. Detections are logged in Activity even while the guard is off. `GET/PUT /api/guard` (`{"enabled": true}`) controls it.
+The app groups CEC volume changes into sequences and learns repeating patterns per player from the last 24 h: a regular interval (1 min – 2 h) with at least three matches, plus whether the pattern contains bursts faster than remote clicks. The Helpers tab shows the result in plain words ("every 15 min 01 s, down, 1–3 steps, 6× since 10:34") or that no pattern was found.
+
+| Mode | |
+|---|---|
+| Off | Nothing |
+| Detect only | Logs detections in Activity (default) |
+| Undo automatic changes | Restores the previous volume when a change fits the learned pattern (±15 s of the expected time, or a burst if the pattern has bursts). Remote clicks are left alone. Both directions. |
+| Lock volume | Undoes every CEC volume change; change the volume via the BluOS app or Home Assistant |
+
+`GET /api/guard`, `PUT /api/guard {"mode": "undo"}`.
+
+### Volume when the TV starts (Helpers tab)
+
+When a player switches to a TV input (by default inputs named TV, HDMI or ARC; selectable), the app sets a **fixed volume** or **limits it to a maximum** a few seconds later. With the limit, CEC volume increases above it are also corrected for 90 s, since TVs and streaming boxes often send a volume shortly after power-on. `GET/PUT /api/tvstart` (`{"mode": "max", "level": 40, "inputs": ["TV"]}`).
 
 ## Automation (Home Assistant, Node-RED, Shortcuts)
 
@@ -194,7 +208,8 @@ Command formats for fixed groups and settings are not part of the public BluOS A
 | GET | `/api/jobs/:id`, `/api/jobs/running` | Recall progress |
 | GET | `/api/events?kind=volume` | Activity log |
 | GET | `/api/events/stream` | Activity log, live (Server-Sent Events) |
-| GET/PUT | `/api/guard` | Volume guard status / `{"enabled": true}` |
+| GET/PUT | `/api/guard` | CEC volume protection: status and learned patterns / `{"mode": "off\|detect\|undo\|lock"}` |
+| GET/PUT | `/api/tvstart` | Volume when the TV starts / `{"mode": "off\|fixed\|max", "level", "inputs"}` |
 | GET | `/api/airplay` | AirPlay receivers |
 | GET | `/api/speakers[?scan=1]` | Speaker list (`scan=1` runs a full discovery) |
 | POST | `/api/recall/<name>` | Recall by name (see *Automation*) |

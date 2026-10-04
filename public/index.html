@@ -72,6 +72,8 @@
   .snap .grow[data-act="toggle"] { cursor: pointer; }
   .toggle { border: none; padding: 4px 6px; font-size: 1.3rem; line-height: 1; color: var(--muted); transition: transform .15s; }
   .toggle[aria-expanded="true"] { transform: rotate(90deg); }
+  .small-select { padding: 5px 8px; font-size: .85rem; }
+  .pattern { margin-top: 8px; }
   .card-error { color: var(--danger); margin-top: 12px; }
 </style>
 </head>
@@ -111,12 +113,34 @@
     <div class="section-head"><h2>AirPlay receivers</h2></div>
     <div class="card"><div id="airplay" class="empty">Loading…</div>
       <div class="hint">Set an AirPlay name in a snapshot's edit form. The receiver is offered while that setup is active.</div></div>
-    <div class="section-head"><h2>Volume guard</h2>
-      <label class="meta"><input type="checkbox" id="guardOn"> on</label></div>
+    <div class="section-head"><h2>CEC volume protection</h2>
+      <select id="guardMode" class="small-select">
+        <option value="off">Off</option>
+        <option value="detect">Detect only</option>
+        <option value="undo">Undo automatic changes</option>
+        <option value="lock">Lock volume</option>
+      </select></div>
     <div class="card"><div id="guard" class="empty">Loading…</div>
-      <div class="hint">Undoes volume changes a TV sends by itself over HDMI-CEC: steps less than 0.3 s apart, or steps in the
-        TV's repeating rhythm (learned, about every 15 minutes). Remote control clicks are not affected. Works in both directions.
-        Detections are logged in Activity, also while the guard is off.</div></div>
+      <div class="hint">Some TVs change the soundbar volume over HDMI-CEC by themselves. The app learns repeating CEC volume
+        changes (regular interval, bursts faster than remote clicks) per player.
+        <b>Detect only</b> logs them in Activity. <b>Undo automatic changes</b> restores the volume when a change fits the learned
+        pattern; remote clicks stay. <b>Lock volume</b> undoes every CEC volume change (use the BluOS app or Home Assistant to change it).</div></div>
+
+    <div class="section-head"><h2>Volume when the TV starts</h2>
+      <select id="tvMode" class="small-select">
+        <option value="off">Off</option>
+        <option value="fixed">Set fixed volume</option>
+        <option value="max">Limit to maximum</option>
+      </select></div>
+    <div class="card">
+      <div class="row"><label for="tvLevel" class="grow">Volume (0–100)</label>
+        <input type="number" id="tvLevel" min="0" max="100" step="1"></div>
+      <div id="tvInputs" class="meta" style="margin-top:10px"></div>
+      <div class="hint">Applied a few seconds after a player switches to one of the selected inputs. With <b>Limit to maximum</b>,
+        CEC volume increases above the limit are also corrected for 90 s, since TVs often send a volume shortly after power-on.</div>
+      <div class="actions"><button id="tvSave" class="primary">Save</button><span id="tvSaved" class="meta"></span></div>
+    </div>
+
     <div class="section-head"><h2>TV audio re-sync</h2></div>
     <div class="card empty">Planned: switch the soundbar's TV input off and on when the TV starts with a wrong sample rate.</div>
   </section>
@@ -434,16 +458,45 @@ $('#volOnly').addEventListener('change', () => loadEvents());
 async function loadGuard() {
   try {
     const g = await api('GET', '/api/guard');
-    $('#guardOn').checked = g.enabled;
-    const t = (iso) => iso ? new Date(iso).toLocaleTimeString() : '–';
+    $('#guardMode').value = g.mode;
+    const tm = (iso) => iso ? new Date(iso).toLocaleTimeString() : '–';
+    const lines = g.players.map((p) => p.pattern
+      ? `<div class="pattern"><b>${esc(p.player)}</b>: repeating CEC volume change every <b>${esc(p.pattern.period)}</b>,
+          ${esc(p.pattern.direction)}, ${esc(p.pattern.steps)} step(s)${p.pattern.bursty ? ', partly as fast bursts' : ''};
+          ${p.pattern.matches}× since ${tm(p.pattern.since)}. Probably sent by the TV.
+          <div class="meta">Last: ${tm(p.pattern.last)} · next expected: ${tm(p.pattern.next)}</div></div>`
+      : `<div class="pattern"><b>${esc(p.player)}</b>: ${p.changes24h} CEC volume change(s) in the last 24 h, no repeating pattern
+          (probably remote control).</div>`);
     $('#guard').className = '';
-    $('#guard').innerHTML = `${g.enabled ? '<span class="dot on"></span>Active' : '<span class="dot"></span>Off'}
-      · undone: ${g.undone} · last drift: ${t(g.lastDrift)} · next expected: ${t(g.nextExpected)} · period: ${Math.floor(g.periodS / 60)} min ${(g.periodS % 60).toFixed(1)} s`;
+    $('#guard').innerHTML = (lines.join('') || '<div class="empty">No CEC volume changes in the last 24 h.</div>') +
+      `<div class="meta" style="margin-top:8px">Undone so far: ${g.undone}${g.lastAction ? ' · last ' + tm(g.lastAction) : ''}</div>`;
   } catch (e) { $('#guard').textContent = e.message; }
 }
-$('#guardOn').addEventListener('change', async (ev) => {
-  try { await api('PUT', '/api/guard', { enabled: ev.target.checked }); } catch (e) { showError(e); }
+$('#guardMode').addEventListener('change', async (ev) => {
+  try { await api('PUT', '/api/guard', { mode: ev.target.value }); } catch (e) { showError(e); }
   loadGuard();
+});
+
+async function loadTvStart() {
+  try {
+    const c = await api('GET', '/api/tvstart');
+    $('#tvMode').value = c.mode;
+    $('#tvLevel').value = c.level;
+    const names = [...new Set([...c.knownInputs, ...c.inputs])];
+    $('#tvInputs').innerHTML = names.length
+      ? 'Inputs: ' + names.map((n) => `<label style="margin-right:12px"><input type="checkbox" data-input="${esc(n)}"
+          ${c.inputs.includes(n) || (!c.inputs.length && /\b(tv|hdmi|e?arc)\b/i.test(n)) ? 'checked' : ''}> ${esc(n)}</label>`).join('')
+      : 'Inputs: none seen yet. Inputs appear here after a player has used them (e.g. switch the TV on once).';
+  } catch (e) { showError(e); }
+}
+$('#tvSave').addEventListener('click', async () => {
+  try {
+    const inputs = [...document.querySelectorAll('[data-input]')].filter((x) => x.checked).map((x) => x.dataset.input);
+    await api('PUT', '/api/tvstart', { mode: $('#tvMode').value, level: Number($('#tvLevel').value), inputs });
+    $('#tvSaved').textContent = ' Saved';
+    setTimeout(() => { $('#tvSaved').textContent = ''; }, 2000);
+  } catch (e) { showError(e); }
+  loadTvStart();
 });
 
 async function loadAirplay() {
@@ -493,7 +546,7 @@ function showTab(name) {
   for (const p of document.querySelectorAll('[data-panel]')) p.hidden = p.dataset.panel !== name;
   try { localStorage.setItem('tab', name); } catch {}
   if (name === 'speakers') loadSpeakers();
-  if (name === 'helpers') { loadAirplay(); loadGuard(); }
+  if (name === 'helpers') { loadAirplay(); loadGuard(); loadTvStart(); }
   if (name === 'activity') loadEvents();
 }
 document.querySelector('.tabs').addEventListener('click', (ev) => {

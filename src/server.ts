@@ -6,7 +6,8 @@ import { airplayAvailable, airplayEvent, airplayStatus, pcmSource, reconcileAirp
 import { registerStreams } from './stream.ts';
 import { startMonitor } from './monitor.ts';
 import { startLsdp } from './lsdp.ts';
-import { guardInfo, seedGuard, setGuardEnabled } from './guard.ts';
+import { guardInfo, seedGuard, setGuardMode, type GuardMode } from './guard.ts';
+import { setTvStartConfig, tvStartConfig, type TvStartConfig } from './tvstart.ts';
 import { speakerList } from './speakers.ts';
 import { discover, probeHosts, scanSubnets } from './discovery.ts';
 import { getJob, lastJob, runningJob, startRecall } from './recall.ts';
@@ -90,10 +91,18 @@ app.get('/api/events/stream', (req, reply) => {
 });
 
 app.get('/api/guard', async () => guardInfo());
-app.put<{ Body: { enabled?: boolean } }>('/api/guard', async (req) => {
-  if (typeof req.body?.enabled !== 'boolean') throw Object.assign(new Error('enabled (true/false) is required'), { statusCode: 400 });
-  setGuardEnabled(req.body.enabled);
+app.put<{ Body: { mode?: GuardMode } }>('/api/guard', async (req) => {
+  if (!['off', 'detect', 'undo', 'lock'].includes(req.body?.mode as string)) {
+    throw Object.assign(new Error('mode must be off, detect, undo or lock'), { statusCode: 400 });
+  }
+  setGuardMode(req.body.mode!);
   return guardInfo();
+});
+
+app.get('/api/tvstart', async () => tvStartConfig());
+app.put<{ Body: Partial<TvStartConfig> }>('/api/tvstart', async (req) => {
+  setTvStartConfig(req.body ?? {});
+  return tvStartConfig();
 });
 
 app.get('/api/airplay', async () => ({ available: airplayAvailable(), receivers: airplayStatus() }));
