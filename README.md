@@ -81,6 +81,86 @@ All settings are optional; defaults are detected automatically.
 
 Enter an *AirPlay name* in a setup's edit form. While that setup is active, an AirPlay 2 receiver with this name is offered (shairport-sync); the audio is streamed to the group as FLAC. Volume from the iPhone/iPad is applied to the BluOS player. Expect ~5–6 s delay (fine for music, not for video). AirPlay itself is limited to CD-quality audio.
 
+## Automation (Home Assistant, Node-RED, Shortcuts)
+
+Snapshots can be recalled by name, and the current state is available as JSON. There is no authentication; keep the app on your local network.
+
+| Method | Path | |
+|---|---|---|
+| POST | `/api/recall/<name>` | Recall a snapshot by name (case-insensitive, URL-encoded). Returns `202` with the job; `404` lists the available names; `409` while another recall runs. |
+| GET | `/api/state` | `active` (name of the snapshot matching the current setup or `null`), `names`, `recall` (last recall: `status` running/done/failed, `differences`), `airplay` |
+
+```sh
+curl -X POST http://192.168.1.10:8095/api/recall/Home%20Cinema
+curl http://192.168.1.10:8095/api/state
+```
+
+### Home Assistant
+
+Add to `configuration.yaml` (replace the address), then restart Home Assistant:
+
+```yaml
+rest_command:
+  bluesound_recall:
+    url: "http://192.168.1.10:8095/api/recall/{{ name | urlencode }}"
+    method: post
+
+rest:
+  - resource: http://192.168.1.10:8095/api/state
+    scan_interval: 30
+    sensor:
+      - name: Bluesound setup
+        unique_id: bluesound_snapshots_setup
+        value_template: "{{ value_json.active or 'none' }}"
+        json_attributes: [names, recall, airplay]
+      - name: Bluesound recall
+        unique_id: bluesound_snapshots_recall
+        value_template: "{{ value_json.recall.status if value_json.recall else 'idle' }}"
+
+template:
+  - select:
+      - name: Bluesound snapshot
+        unique_id: bluesound_snapshots_select
+        state: "{{ states('sensor.bluesound_setup') }}"
+        options: "{{ state_attr('sensor.bluesound_setup', 'names') or [] }}"
+        select_option:
+          - action: rest_command.bluesound_recall
+            data:
+              name: "{{ option }}"
+```
+
+This gives you:
+
+- **`select.bluesound_snapshot`**: dropdown of all snapshots showing the active one; choosing an entry recalls it. New snapshots appear after the next sensor update.
+- **`sensor.bluesound_setup`**: active snapshot (`none` if the speakers match no snapshot).
+- **`sensor.bluesound_recall`**: `idle`, `running`, `done` or `failed`.
+- **`rest_command.bluesound_recall`** for automations and buttons, e.g. switch to the home cinema when the TV turns on:
+
+```yaml
+automation:
+  - alias: Home cinema when the TV turns on
+    triggers:
+      - trigger: state
+        entity_id: media_player.tv
+        to: "on"
+    conditions:
+      - condition: not
+        conditions:
+          - condition: state
+            entity_id: sensor.bluesound_setup
+            state: Home Cinema
+    actions:
+      - action: rest_command.bluesound_recall
+        data:
+          name: Home Cinema
+```
+
+A recall takes 30 s to 2 min; the speakers are silent meanwhile.
+
+### Node-RED, iOS Shortcuts, scripts
+
+Send `POST /api/recall/<name>` with any HTTP client (Node-RED *http request* node, Shortcuts *Get Contents of URL* with method POST). Poll `GET /api/state` until `recall.status` is no longer `running` if you need to wait for the result.
+
 ## How recall works
 
 1. Read the current setup; groups that already match the snapshot are kept.
@@ -96,7 +176,7 @@ Command formats for fixed groups and settings are not part of the public BluOS A
 
 | Method | Path | |
 |---|---|---|
-| GET | `/api/current` | Current setup (+ ids of matching snapshots) |
+| GET | `/api/current[?cached=1]` | Current setup (+ ids of matching snapshots); `cached=1` returns the last stored read |
 | GET | `/api/snapshots` | List snapshots |
 | POST | `/api/snapshots` `{name}` | Save current setup |
 | PATCH | `/api/snapshots/:id` `{name}` | Rename |
@@ -107,6 +187,9 @@ Command formats for fixed groups and settings are not part of the public BluOS A
 | GET | `/api/jobs/:id`, `/api/jobs/running` | Recall progress |
 | GET | `/api/events?kind=volume` | Activity log |
 | GET | `/api/airplay` | AirPlay receivers |
+| GET | `/api/speakers[?scan=1]` | Speaker list (`scan=1` runs a full discovery) |
+| POST | `/api/recall/<name>` | Recall by name (see *Automation*) |
+| GET | `/api/state` | Active snapshot, names, last recall (see *Automation*) |
 
 ## Development
 

@@ -8,7 +8,7 @@ import { startMonitor } from './monitor.ts';
 import { startLsdp } from './lsdp.ts';
 import { speakerList } from './speakers.ts';
 import { discover, probeHosts, scanSubnets } from './discovery.ts';
-import { getJob, runningJob, startRecall } from './recall.ts';
+import { getJob, lastJob, runningJob, startRecall } from './recall.ts';
 import { devices, events, snapshots } from './store.ts';
 
 const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info' } });
@@ -129,6 +129,42 @@ app.post<{ Params: { id: string } }>('/api/snapshots/:id/recall', async (req, re
   busy();
   reply.code(202);
   return startRecall(s.id, s.name, s.data);
+});
+
+// ---- Automation (Home Assistant, Node-RED, Shortcuts): names instead of ids ----
+
+const byName = (name: string) => {
+  const s = snapshots.list().find((x) => x.name.toLowerCase() === name.trim().toLowerCase());
+  if (!s) {
+    const names = snapshots.list().map((x) => x.name).join(', ');
+    throw Object.assign(new Error(`No snapshot named "${name}". Available: ${names}`), { statusCode: 404 });
+  }
+  return s;
+};
+
+app.post<{ Params: { name: string } }>('/api/recall/:name', async (req, reply) => {
+  const s = byName(req.params.name);
+  busy();
+  reply.code(202);
+  const job = startRecall(s.id, s.name, s.data);
+  return { snapshot: s.name, job: job.id, status: job.status };
+});
+
+app.get('/api/state', async () => {
+  const list = snapshots.list();
+  const active = latest.current ? list.filter((s) => isActive(s.data, latest.current!)).map((s) => s.name) : [];
+  const job = lastJob();
+  return {
+    active: active[0] ?? null,
+    activeAll: active,
+    names: list.map((s) => s.name),
+    readAt: latest.current?.capturedAt ?? null,
+    recall: job ? {
+      snapshot: job.snapshotName, status: job.status, startedAt: job.startedAt,
+      finishedAt: job.finishedAt ?? null, differences: job.differences,
+    } : null,
+    airplay: airplayStatus().map((r) => ({ name: r.name, playing: r.playing })),
+  };
 });
 
 app.get('/api/jobs/running', async () => runningJob() ?? null);

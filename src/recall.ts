@@ -26,8 +26,10 @@ export interface Job {
 const jobs = new Map<string, Job>();
 let running: Job | undefined;
 
+let last: Job | undefined;
 export const getJob = (id: string) => jobs.get(id);
 export const runningJob = () => running;
+export const lastJob = () => last;
 
 const DISSOLVE_TIMEOUT_MS = 180_000;
 const GROUP_TIMEOUT_MS = 60_000;
@@ -44,6 +46,7 @@ export function startRecall(snapshotId: number, snapshotName: string, target: Sn
   };
   jobs.set(job.id, job);
   running = job;
+  last = job;
   const log = (msg: string, level: Job['log'][number]['level'] = 'info') =>
     job.log.push({ t: new Date().toISOString(), level, msg });
 
