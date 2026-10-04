@@ -67,6 +67,11 @@
   .speaker-table .sub { color: var(--muted); font-size: .8rem; }
   .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; background: var(--muted); }
   .dot.on { background: var(--ok); }
+  .snap { padding: 10px 14px; }
+  .snap.open { padding: 16px; }
+  .snap .grow[data-act="toggle"] { cursor: pointer; }
+  .toggle { border: none; padding: 4px 6px; font-size: 1.3rem; line-height: 1; color: var(--muted); transition: transform .15s; }
+  .toggle[aria-expanded="true"] { transform: rotate(90deg); }
   .card-error { color: var(--danger); margin-top: 12px; }
 </style>
 </head>
@@ -303,20 +308,27 @@ async function loadSnapshots() {
 
 const isActiveSnapshot = (id) => (current?.activeSnapshotIds || []).includes(id);
 
+// Snapshots are shown as one line; expanded ones are remembered per browser.
+const expanded = new Set((() => { try { return JSON.parse(localStorage.getItem('expanded') || '[]'); } catch { return []; } })());
+const saveExpanded = () => { try { localStorage.setItem('expanded', JSON.stringify([...expanded])); } catch {} };
+
 function renderSnapshots() {
   const el = $('#snapshots');
   if (!snapshotList.length) { el.innerHTML = '<div class="card empty">No snapshots yet. Build a setup in the BluOS app, then save it below.</div>'; return; }
   el.innerHTML = snapshotList.map((s) => {
     const edit = editing.has(s.id);
+    const open = edit || expanded.has(s.id);
     return `
-    <div class="card${isActiveSnapshot(s.id) ? ' active' : ''}" data-id="${s.id}" data-name="${esc(s.name)}">
+    <div class="card snap${isActiveSnapshot(s.id) ? ' active' : ''}${open ? ' open' : ''}" data-id="${s.id}" data-name="${esc(s.name)}">
       <div class="row">
-        <div class="grow">
+        <button class="toggle" data-act="toggle" aria-expanded="${open}" aria-label="${open ? 'Hide' : 'Show'} details" ${edit ? 'disabled' : ''}>›</button>
+        <div class="grow" data-act="toggle">
           <div class="name">${esc(s.name)}${isActiveSnapshot(s.id) ? '<span class="badge">Active</span>' : ''}</div>
-          <div class="meta">Captured ${new Date(s.data.capturedAt).toLocaleString()}${s.updatedAt !== s.createdAt ? ` · edited ${new Date(s.updatedAt).toLocaleString()}` : ''}</div>
+          ${open ? `<div class="meta">Captured ${new Date(s.data.capturedAt).toLocaleString()}${s.updatedAt !== s.createdAt ? ` · edited ${new Date(s.updatedAt).toLocaleString()}` : ''}</div>` : ''}
         </div>
         ${edit ? '' : `<button class="primary" data-act="recall" ${busy ? 'disabled' : ''}>Recall</button>`}
       </div>
+      ${open ? `
       ${edit ? s.data.zones.map(editZoneHtml).join('') : s.data.zones.map(zoneHtml).join('')}
       <div class="card-error" hidden></div>
       <div class="actions">
@@ -326,7 +338,7 @@ function renderSnapshots() {
              <button data-act="capture" ${busy ? 'disabled' : ''}>Replace with current</button>
              <button data-act="rename">Rename</button>
              <button data-act="delete" class="danger">Delete</button>`}
-      </div>
+      </div>` : '<div class="card-error" hidden></div>'}
     </div>`;
   }).join('');
 }
@@ -356,7 +368,7 @@ async function follow(job) {
 }
 
 $('#snapshots').addEventListener('click', async (ev) => {
-  const btn = ev.target.closest('button[data-act]'); if (!btn) return;
+  const btn = ev.target.closest('[data-act]'); if (!btn) return;
   const card = btn.closest('[data-id]');
   const id = Number(card.dataset.id);
   const name = card.dataset.name;
@@ -366,6 +378,11 @@ $('#snapshots').addEventListener('click', async (ev) => {
       case 'recall':
         if (!confirm(`Recall "${name}"? Current groups will be dissolved.`)) return;
         await follow(await api('POST', `/api/snapshots/${id}/recall`));
+        break;
+      case 'toggle':
+        if (editing.has(id)) return;
+        if (expanded.has(id)) expanded.delete(id); else expanded.add(id);
+        saveExpanded(); renderSnapshots();
         break;
       case 'edit': editing.add(id); renderSnapshots(); break;
       case 'cancel-edit': editing.delete(id); renderSnapshots(); break;
