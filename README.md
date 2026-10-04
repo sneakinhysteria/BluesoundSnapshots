@@ -1,4 +1,4 @@
-# Bluesound Snapshot
+# Bluesound Snapshots
 
 Store and recall BluOS speaker setups with one button. BluOS lets a speaker belong to only one fixed group, so switching between, for example, a home cinema (soundbar + surrounds + sub) and a stereo pair (two speakers + sub) normally means rebuilding groups in the BluOS app. This app snapshots each setup once and recreates it on demand.
 
