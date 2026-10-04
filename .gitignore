@@ -1,0 +1,4 @@
+node_modules/
+data/
+# Raw traffic captures contain local network details; see docs/bluos-api-notes.md
+docs/capture/

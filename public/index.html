@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Speaker Setups</title>
+<style>
+  :root {
+    --bg: #f4f4f2; --card: #ffffff; --text: #1b1b1b; --muted: #6b6b6b; --line: #e2e2de;
+    --accent: #1f5fd1; --accent-text: #ffffff; --danger: #b3261e; --ok: #1e7a3a; --warn: #9a6200;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #121212; --card: #1d1d1d; --text: #ececec; --muted: #9a9a9a; --line: #2e2e2e;
+      --accent: #5b8ff0; --accent-text: #0b0b0b; --danger: #f2827a; --ok: #6fcf8a; --warn: #e7b75a; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 720px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 1.5rem; margin: 0 0 20px; }
+  h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0; }
+  .section-head { display: flex; align-items: center; justify-content: space-between; margin: 28px 0 10px; min-height: 34px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 12px; }
+  .row { display: flex; gap: 12px; align-items: center; }
+  .grow { flex: 1; min-width: 0; }
+  .name { font-weight: 600; font-size: 1.1rem; }
+  .meta { color: var(--muted); font-size: .85rem; }
+  .zone { margin-top: 10px; font-size: .92rem; }
+  .zone b { font-weight: 600; }
+  .zone .spk { color: var(--muted); }
+  button { font: inherit; border: 1px solid var(--line); background: transparent; color: var(--text);
+    border-radius: 8px; padding: 8px 12px; cursor: pointer; }
+  button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; padding: 10px 18px; }
+  button.small { padding: 5px 10px; font-size: .85rem; }
+  button.danger { color: var(--danger); }
+  button:disabled { opacity: .5; cursor: default; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  input, select { font: inherit; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line);
+    background: var(--bg); color: var(--text); }
+  input[type=number] { width: 96px; }
+  input[type=checkbox] { width: 18px; height: 18px; vertical-align: middle; }
+  #saveName { width: 100%; }
+  .log { font: 13px/1.5 ui-monospace, Menlo, monospace; white-space: pre-wrap; margin-top: 10px; max-height: 260px; overflow: auto; }
+  .log .warn { color: var(--warn); } .log .error { color: var(--danger); }
+  .status-done { color: var(--ok); font-weight: 600; } .status-failed { color: var(--danger); font-weight: 600; }
+  .empty { color: var(--muted); }
+  .error-banner { color: var(--danger); margin-bottom: 12px; }
+  details { margin-top: 4px; font-size: .85rem; }
+  summary { color: var(--muted); cursor: pointer; }
+  table { border-collapse: collapse; margin-top: 6px; width: 100%; }
+  td { padding: 4px 8px 4px 0; border-top: 1px solid var(--line); vertical-align: middle; }
+  td:first-child { color: var(--muted); width: 38%; }
+  .edit-zone { margin-top: 14px; }
+  .edit-zone h3 { font-size: 1rem; margin: 0 0 4px; }
+  .owner td { color: var(--muted); font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; padding-top: 12px; border-top: none; }
+  .unit { color: var(--muted); font-size: .85rem; margin-left: 4px; }
+  .hint { color: var(--muted); font-size: .8rem; margin-top: 4px; }
+  .card.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .badge { display: inline-block; font-size: .75rem; font-weight: 600; color: var(--accent); border: 1px solid var(--accent);
+    border-radius: 999px; padding: 1px 8px; margin-left: 8px; vertical-align: middle; }
+  .card-error { color: var(--danger); margin-top: 12px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Speaker Setups</h1>
+  <div id="error" class="error-banner" hidden></div>
+
+  <div id="job" class="card" hidden></div>
+
+  <div class="section-head"><h2>Snapshots</h2></div>
+  <div id="snapshots"><div class="empty">Loading…</div></div>
+
+  <div class="section-head"><h2>Current setup</h2><button id="refresh" class="small">Refresh</button></div>
+  <div class="card">
+    <div id="current" class="empty">Reading speakers…</div>
+    <div id="airplay" class="meta" style="margin-top:10px" hidden></div>
+    <form id="save" class="row" style="margin-top:14px">
+      <input id="saveName" class="grow" placeholder="Snapshot name, e.g. Home Cinema" autocomplete="off" required>
+      <button class="primary" type="submit">Save</button>
+    </form>
+  </div>
+  <div class="section-head"><h2>Activity</h2>
+    <label class="meta"><input type="checkbox" id="volOnly"> volume only</label></div>
+  <div class="card"><div id="events" class="log empty" style="max-height:360px">Loading…</div></div>
+</main>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const CHANNEL = { front: 'front', left: 'left', right: 'right', side_left: 'left surround', side_right: 'right surround',
+  rear_left: 'left rear', rear_right: 'right rear', subwoofer: 'sub' };
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const isSurround = (z) => z.members.some((m) => !['left', 'right'].includes(m.channelMode));
+
+let busy = false;
+let snapshotList = [];
+let current = null;          // last read of the current setup; supplies setting metadata for older snapshots
+const editing = new Set();   // ids of snapshots in edit mode
+
+async function api(method, url, body) {
+  const res = await fetch(url, { method, headers: body ? { 'content-type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined });
+  if (res.status === 204) return null;
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || `HTTP ${res.status}`);
+  return data;
+}
+
+function showError(e) {
+  const el = $('#error');
+  el.textContent = e ? String(e.message || e) : '';
+  el.hidden = !e;
+}
+
+function optionLabel(s) {
+  const o = (s.meta || metaFor(s))?.options?.find((x) => x.value === s.value);
+  return o ? o.label : s.value;
+}
+
+function zoneHtml(z) {
+  const title = z.groupName || z.leader.name;
+  const parts = [];
+  if (z.members.length) parts.push(`${esc(z.leader.name)} (${CHANNEL[z.leader.channelMode] || esc(z.leader.channelMode)})`);
+  for (const m of z.members) parts.push(`${esc(m.name)} (${CHANNEL[m.channelMode] || esc(m.channelMode)})`);
+  if (z.sub) parts.push(`${esc(z.sub.name)} (sub)`);
+  for (const s of z.dynamicSlaves) parts.push(esc(s.name));
+  const vol = (z.volume.mute ? 'muted' : `vol ${z.volume.level}`) + (z.airplayName ? ` · AirPlay "${esc(z.airplayName)}"` : '');
+  const rows = [];
+  if (isSurround(z)) {
+    rows.push([z.leader.name, 'Distance', `${z.leader.distance ?? '–'} m`]);
+    for (const m of z.members) rows.push([m.name, 'Distance', `${m.distance ?? '–'} m`]);
+  }
+  for (const m of z.members) rows.push([m.name, 'Level', `${m.levelDb} dB`]);
+  if (z.sub) rows.push([z.sub.name, 'Level', `${z.sub.levelDb} dB`]);
+  for (const s of z.settings || []) rows.push([s.ownerName, s.label, optionLabel(s)]);
+  const details = rows.length ? `<details><summary>${rows.length} settings</summary><table>${
+    rows.map(([o, l, v]) => `<tr><td>${esc(o)}</td><td>${esc(l)}</td><td>${esc(v)}</td></tr>`).join('')}</table></details>` : '';
+  return `<div class="zone"><b>${esc(title)}</b> <span class="spk">· ${parts.length ? parts.join(' · ') + ' · ' : 'standalone · '}${vol}</span>${details}</div>`;
+}
+
+// ---- Editing ----
+
+// Older snapshots lack setting metadata; borrow it only from the same speaker's same setting.
+function metaFor(s) {
+  for (const z of current?.zones || []) {
+    const hit = (z.settings || []).find((x) => x.owner === s.owner && x.name === s.name && x.meta);
+    if (hit) return hit.meta;
+  }
+}
+
+const num = (attrs, value, extra = '') =>
+  `<input type="number" step="any" ${attrs} value="${esc(value)}" ${extra}>`;
+
+function settingControl(z, s) {
+  const meta = s.meta || metaFor(s);
+  const attrs = `data-kind="setting" data-zone="${esc(z.leader.mac)}" data-owner="${esc(s.owner)}" data-name="${esc(s.name)}"`;
+  if (meta?.options) {
+    // Keep a stored value selectable even if the speaker does not list it.
+    const options = meta.options.some((o) => o.value === s.value) ? meta.options : [{ value: s.value, label: s.value }, ...meta.options];
+    return `<select ${attrs}>${options.map((o) =>
+      `<option value="${esc(o.value)}" ${o.value === s.value ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}</select>`;
+  }
+  if (meta?.type === 'range') {
+    return num(attrs, s.value, `min="${meta.min ?? ''}" max="${meta.max ?? ''}"`) +
+      `<span class="unit">${meta.min} … ${meta.max}</span>`;
+  }
+  if (meta?.type === 'dual-range') {
+    const [lo, hi] = s.value.split(',');
+    const b = `min="${meta.min ?? ''}" max="${meta.max ?? ''}"`;
+    return `${num(`${attrs} data-part="lo"`, lo, b)} – ${num(`${attrs} data-part="hi"`, hi, b)}`;
+  }
+  return `<input ${attrs} value="${esc(s.value)}">`;
+}
+
+function editZoneHtml(z) {
+  const zm = `data-zone="${esc(z.leader.mac)}"`;
+  const vol = z.volume.mute ? (z.volume.muteLevel ?? 0) : z.volume.level;
+  const rows = [];
+  rows.push(['AirPlay name', `<input data-kind="airplay" ${zm} value="${esc(z.airplayName || '')}" placeholder="off" maxlength="50">`]);
+  rows.push(['Volume', `${num(`data-kind="volume" ${zm} min="0" max="100"`, vol)}
+    <label class="unit"><input type="checkbox" data-kind="mute" ${zm} ${z.volume.mute ? 'checked' : ''}> muted</label>`]);
+  if (isSurround(z)) {
+    rows.push([`${z.leader.name} distance`, num(`data-kind="ldist" ${zm} min="0" max="30"`, z.leader.distance ?? '') + '<span class="unit">m</span>']);
+    for (const m of z.members) rows.push([`${m.name} distance`,
+      num(`data-kind="mdist" ${zm} data-mac="${esc(m.mac)}" min="0" max="30"`, m.distance ?? '') + '<span class="unit">m</span>']);
+  }
+  for (const m of z.members) rows.push([`${m.name} level`,
+    num(`data-kind="mlevel" ${zm} data-mac="${esc(m.mac)}" min="-10" max="10"`, m.levelDb) + '<span class="unit">dB</span>']);
+  if (z.sub) rows.push([`${z.sub.name} level`, num(`data-kind="sublevel" ${zm} min="-10" max="10"`, z.sub.levelDb) + '<span class="unit">dB</span>']);
+
+  const byOwner = new Map();
+  for (const s of z.settings || []) {
+    if (!byOwner.has(s.ownerName)) byOwner.set(s.ownerName, []);
+    byOwner.get(s.ownerName).push(s);
+  }
+  let settingsHtml = '';
+  for (const [owner, list] of byOwner) {
+    settingsHtml += `<tr class="owner"><td colspan="2">${esc(owner)}</td></tr>` +
+      list.map((s) => `<tr><td>${esc(s.label)}</td><td>${settingControl(z, s)}</td></tr>`).join('');
+  }
+  return `<div class="edit-zone"><h3>${esc(z.groupName || z.leader.name)}</h3><table>
+    ${rows.map(([l, c]) => `<tr><td>${esc(l)}</td><td>${c}</td></tr>`).join('')}
+    ${settingsHtml}</table>
+    <div class="hint">AirPlay name: offers an AirPlay 2 receiver with this name while this setup is active. Leave empty for none.</div>
+    ${isSurround(z) ? '<div class="hint">A changed distance makes recall rebuild the group, because distances can only be set when it is created.</div>' : ''}
+  </div>`;
+}
+
+function collectEdits(card) {
+  const zones = new Map();
+  const zoneOf = (mac) => {
+    if (!zones.has(mac)) zones.set(mac, { leaderMac: mac, members: [], settings: [] });
+    return zones.get(mac);
+  };
+  const memberOf = (z, mac) => {
+    let m = z.members.find((x) => x.mac === mac);
+    if (!m) z.members.push(m = { mac });
+    return m;
+  };
+  const val = (el) => {
+    if (el.value.trim() === '' || !Number.isFinite(Number(el.value))) throw new Error('Please enter a number in every field');
+    return Number(el.value);
+  };
+  const duals = new Map();
+  for (const el of card.querySelectorAll('[data-kind]')) {
+    const z = zoneOf(el.dataset.zone);
+    switch (el.dataset.kind) {
+      case 'airplay': z.airplayName = el.value; break;
+      case 'volume': z.volume = { ...(z.volume || {}), level: val(el) }; break;
+      case 'mute': z.volume = { ...(z.volume || {}), mute: el.checked }; break;
+      case 'ldist': z.leaderDistance = val(el); break;
+      case 'mdist': memberOf(z, el.dataset.mac).distance = val(el); break;
+      case 'mlevel': memberOf(z, el.dataset.mac).levelDb = val(el); break;
+      case 'sublevel': z.sub = { levelDb: val(el) }; break;
+      case 'setting':
+        if (el.dataset.part) {
+          const key = `${el.dataset.zone}|${el.dataset.owner}|${el.dataset.name}`;
+          const d = duals.get(key) || { z, owner: el.dataset.owner, name: el.dataset.name };
+          d[el.dataset.part] = val(el);
+          duals.set(key, d);
+        } else z.settings.push({ owner: el.dataset.owner, name: el.dataset.name, value: el.value });
+    }
+  }
+  for (const d of duals.values()) d.z.settings.push({ owner: d.owner, name: d.name, value: `${d.lo},${d.hi}` });
+  return [...zones.values()];
+}
+
+// ---- Rendering ----
+
+async function loadCurrent() {
+  const btn = $('#refresh');
+  btn.disabled = true; btn.textContent = 'Reading…';
+  try {
+    current = await api('GET', '/api/current');
+    $('#current').className = '';
+    $('#current').innerHTML = current.zones.map(zoneHtml).join('') || '<span class="empty">No speakers found</span>';
+    if (!editing.size) renderSnapshots(); // don't discard unsaved edits
+    const ap = await api('GET', '/api/airplay');
+    const el = $('#airplay');
+    el.hidden = !ap.available;
+    el.textContent = ap.receivers.length
+      ? 'AirPlay receivers: ' + ap.receivers.map((r) => `${r.name}${r.playing ? ' (playing)' : ''}`).join(', ')
+      : 'No AirPlay receiver active';
+  } catch (e) {
+    $('#current').className = 'empty';
+    $('#current').textContent = e.message;
+  }
+  btn.disabled = busy; btn.textContent = 'Refresh';
+}
+
+async function loadSnapshots() {
+  snapshotList = await api('GET', '/api/snapshots');
+  renderSnapshots();
+}
+
+const isActiveSnapshot = (id) => (current?.activeSnapshotIds || []).includes(id);
+
+function renderSnapshots() {
+  const el = $('#snapshots');
+  if (!snapshotList.length) { el.innerHTML = '<div class="card empty">No snapshots yet. Build a setup in the BluOS app, then save it below.</div>'; return; }
+  el.innerHTML = snapshotList.map((s) => {
+    const edit = editing.has(s.id);
+    return `
+    <div class="card${isActiveSnapshot(s.id) ? ' active' : ''}" data-id="${s.id}" data-name="${esc(s.name)}">
+      <div class="row">
+        <div class="grow">
+          <div class="name">${esc(s.name)}${isActiveSnapshot(s.id) ? '<span class="badge">Active</span>' : ''}</div>
+          <div class="meta">Captured ${new Date(s.data.capturedAt).toLocaleString()}${s.updatedAt !== s.createdAt ? ` · edited ${new Date(s.updatedAt).toLocaleString()}` : ''}</div>
+        </div>
+        ${edit ? '' : `<button class="primary" data-act="recall" ${busy ? 'disabled' : ''}>Recall</button>`}
+      </div>
+      ${edit ? s.data.zones.map(editZoneHtml).join('') : s.data.zones.map(zoneHtml).join('')}
+      <div class="card-error" hidden></div>
+      <div class="actions">
+        ${edit
+          ? '<button class="primary" data-act="save-edit">Save changes</button><button data-act="cancel-edit">Cancel</button>'
+          : `<button data-act="edit">Edit</button>
+             <button data-act="capture" ${busy ? 'disabled' : ''}>Replace with current</button>
+             <button data-act="rename">Rename</button>
+             <button data-act="delete" class="danger">Delete</button>`}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderJob(job) {
+  const el = $('#job');
+  if (!job) { el.hidden = true; return; }
+  el.hidden = false;
+  const status = job.status === 'running' ? 'Recalling…' : job.status === 'done' ? 'Done' : 'Failed';
+  el.innerHTML = `<div class="row"><div class="grow name">${esc(job.snapshotName)}</div>
+      <span class="status-${job.status}">${status}</span>
+      ${job.status !== 'running' ? '<button class="small" data-act="close-job">Close</button>' : ''}</div>
+    <div class="log">${job.log.map((l) => `<div class="${l.level}">${new Date(l.t).toLocaleTimeString()}  ${esc(l.msg)}</div>`).join('')}</div>`;
+  const log = el.querySelector('.log'); log.scrollTop = log.scrollHeight;
+}
+
+async function follow(job) {
+  busy = true; renderSnapshots(); $('#refresh').disabled = true;
+  while (job.status === 'running') {
+    renderJob(job);
+    await new Promise((r) => setTimeout(r, 1500));
+    job = await api('GET', `/api/jobs/${job.id}`);
+  }
+  renderJob(job);
+  busy = false;
+  await Promise.all([loadSnapshots(), loadCurrent()]);
+}
+
+$('#snapshots').addEventListener('click', async (ev) => {
+  const btn = ev.target.closest('button[data-act]'); if (!btn) return;
+  const card = btn.closest('[data-id]');
+  const id = Number(card.dataset.id);
+  const name = card.dataset.name;
+  showError(null);
+  try {
+    switch (btn.dataset.act) {
+      case 'recall':
+        if (!confirm(`Recall "${name}"? Current groups will be dissolved.`)) return;
+        await follow(await api('POST', `/api/snapshots/${id}/recall`));
+        break;
+      case 'edit': editing.add(id); renderSnapshots(); break;
+      case 'cancel-edit': editing.delete(id); renderSnapshots(); break;
+      case 'save-edit':
+        btn.disabled = true;
+        await api('PUT', `/api/snapshots/${id}/values`, { zones: collectEdits(card) });
+        editing.delete(id); await loadSnapshots();
+        break;
+      case 'capture':
+        if (!confirm(`Replace "${name}" with the current setup?`)) return;
+        btn.disabled = true; btn.textContent = 'Reading…';
+        await api('POST', `/api/snapshots/${id}/capture`); await loadSnapshots();
+        break;
+      case 'rename': {
+        const n = prompt('New name', name); if (!n) return;
+        await api('PATCH', `/api/snapshots/${id}`, { name: n }); await loadSnapshots();
+        break;
+      }
+      case 'delete':
+        if (!confirm(`Delete "${name}"?`)) return;
+        await api('DELETE', `/api/snapshots/${id}`); await loadSnapshots();
+        break;
+    }
+  } catch (e) {
+    // Show the error next to the buttons that caused it; the page banner may be scrolled away.
+    const err = card.querySelector('.card-error');
+    if (err) { err.textContent = e.message; err.hidden = false; } else showError(e);
+    btn.disabled = false;
+  }
+});
+
+$('#job').addEventListener('click', (ev) => { if (ev.target.closest('[data-act="close-job"]')) renderJob(null); });
+$('#refresh').addEventListener('click', () => { showError(null); loadCurrent(); loadEvents(); });
+$('#volOnly').addEventListener('change', () => loadEvents());
+
+async function loadEvents() {
+  try {
+    const list = await api('GET', `/api/events?limit=300${$('#volOnly').checked ? '&kind=volume' : ''}`);
+    const el = $('#events');
+    el.className = 'log' + (list.length ? '' : ' empty');
+    el.innerHTML = list.length ? list.map((e) => {
+      const t = new Date(e.t);
+      return `<div>${t.toLocaleDateString()} ${t.toLocaleTimeString()}  ${esc(e.player)}  ${e.kind === 'volume' ? 'Volume' : 'Playback'}: ${esc(e.detail)}</div>`;
+    }).join('') : 'No changes recorded yet';
+  } catch (e) { $('#events').textContent = e.message; }
+}
+setInterval(() => { if (!document.hidden) loadEvents(); }, 15_000);
+
+$('#save').addEventListener('submit', async (ev) => {
+  ev.preventDefault(); showError(null);
+  const btn = ev.submitter; btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    await api('POST', '/api/snapshots', { name: $('#saveName').value });
+    $('#saveName').value = '';
+    await loadSnapshots();
+  } catch (e) { showError(e); }
+  btn.disabled = false; btn.textContent = 'Save';
+});
+
+(async () => {
+  try {
+    const job = await api('GET', '/api/jobs/running');
+    if (job) follow(job); else await loadSnapshots();
+  } catch (e) { showError(e); }
+  await loadCurrent();
+  renderSnapshots();
+  loadEvents();
+})();
+</script>
+</body>
+</html>

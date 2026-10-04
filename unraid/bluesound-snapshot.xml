@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>bluesound-snapshot</Name>
+  <Repository>ghcr.io/sneakinhysteria/bluesound-snapshots:latest</Repository>
+  <Registry>https://github.com/sneakinhysteria/BluesoundSnapshots/pkgs/container/bluesound-snapshots</Registry>
+  <Network>host</Network>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/sneakinhysteria/BluesoundSnapshots/issues</Support>
+  <Project>https://github.com/sneakinhysteria/BluesoundSnapshots</Project>
+  <Overview>Store and recall BluOS (Bluesound) speaker setups: fixed groups, stereo pairs, home cinema with surrounds and subwoofer pairing, levels and audio settings. Optional AirPlay 2 receiver per setup. Requires host networking.</Overview>
+  <Category>MediaApp:Music Tools:</Category>
+  <WebUI>http://[IP]:[PORT:8095]/</WebUI>
+  <Config Name="AppData" Target="/data" Default="/mnt/user/appdata/bluesound-snapshot" Mode="rw" Description="Database (snapshots, activity log)" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/bluesound-snapshot</Config>
+  <Config Name="Port" Target="PORT" Default="8095" Mode="" Description="Web UI port (host network)" Type="Variable" Display="always" Required="true" Mask="false">8095</Config>
+  <Config Name="Time zone" Target="TZ" Default="Europe/Berlin" Mode="" Description="Time zone for the activity log" Type="Variable" Display="always" Required="false" Mask="false">Europe/Berlin</Config>
+  <Config Name="Subnets to scan" Target="BLUOS_SUBNETS" Default="" Mode="" Description="Optional, e.g. 192.168.1.0/24. Auto-detected when empty." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="Public URL" Target="PUBLIC_URL" Default="" Mode="" Description="Optional, address the speakers use to reach this app, e.g. http://192.168.1.10:8095. Auto-detected when empty." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+  <Config Name="AirPlay interfaces" Target="AVAHI_INTERFACES" Default="" Mode="" Description="Optional, interfaces AirPlay receivers are announced on, e.g. br0. All when empty." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+</Container>

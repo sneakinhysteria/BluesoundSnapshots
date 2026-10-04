@@ -1,0 +1,22 @@
+{
+  "name": "bluesound-snapshot",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Store and recall BluOS speaker setups (fixed groups, home cinema, sub pairing)",
+  "type": "module",
+  "engines": { "node": ">=22.18" },
+  "scripts": {
+    "start": "node src/server.ts",
+    "dev": "node --watch src/server.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@fastify/static": "^8.2.0",
+    "fast-xml-parser": "^5.2.5",
+    "fastify": "^5.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "typescript": "^5.8.3"
+  }
+}

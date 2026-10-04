@@ -1,0 +1,20 @@
+# Example compose file. On Unraid see README "Unraid".
+services:
+  bluesound-snapshot:
+    image: ghcr.io/sneakinhysteria/bluesound-snapshots:latest
+    # To build locally instead: build: .
+    container_name: bluesound-snapshot
+    # Host networking is required: speaker discovery (LSDP broadcast, subnet scan),
+    # AirPlay (mDNS, PTP ports 319/320) and the audio streams the speakers fetch.
+    network_mode: host
+    environment:
+      PORT: "8095"
+      TZ: "Europe/Berlin"
+      # Optional overrides, all auto-detected when unset:
+      # BLUOS_SUBNETS: "192.168.1.0/24"   # subnets to scan for players (/22 or smaller)
+      # BLUOS_SCAN: "off"                 # rely on LSDP and known addresses only
+      # PUBLIC_URL: "http://192.168.1.10:8095"  # address the speakers use to reach this app
+      # AVAHI_INTERFACES: "eth0"          # interfaces AirPlay receivers are announced on
+    volumes:
+      - ./data:/data
+    restart: unless-stopped
