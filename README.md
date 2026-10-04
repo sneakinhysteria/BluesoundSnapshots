@@ -12,6 +12,11 @@ Store and recall BluOS speaker setups with one button. BluOS lets a speaker belo
 
 Setups are built in the BluOS app; this app only stores and recreates them.
 
+<p>
+  <img src="docs/screenshots/snapshots.png" alt="Snapshots tab: stored setups with recall buttons, the active one highlighted, and the current setup" width="49%">
+  <img src="docs/screenshots/speakers.png" alt="Speakers tab: discovered speakers with model, firmware, role in the current setup and how they were found" width="49%">
+</p>
+
 ## Requirements
 
 - Docker on a host in the same network as the speakers (Linux; host networking is required).
