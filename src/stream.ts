@@ -46,7 +46,10 @@ export function registerStreams(app: FastifyInstance, pcmSource: PcmSource) {
     const source = pcmSource(req.params.id.replace(/\.flac$/, ''));
     if (!source) return reply.code(404).send({ message: 'No such AirPlay bridge' });
     reply.hijack();
-    const ff = flacEncoder(['-f', PCM.format, '-ar', String(PCM.rate), '-ac', String(PCM.channels), '-i', 'pipe:0']);
+    // The input format is known: skip ffmpeg's input probing (~5 s of audio), which delayed the first
+    // byte so long that BluOS stayed in "connecting".
+    const ff = flacEncoder(['-probesize', '32', '-analyzeduration', '0', '-fflags', 'nobuffer',
+      '-f', PCM.format, '-ar', String(PCM.rate), '-ac', String(PCM.channels), '-i', 'pipe:0', '-flush_packets', '1']);
     ff.stdin!.on('error', () => {});
     const unsubscribe = source.subscribe(ff.stdin!);
     reply.raw.writeHead(200, { 'content-type': 'audio/flac', 'cache-control': 'no-cache' });
