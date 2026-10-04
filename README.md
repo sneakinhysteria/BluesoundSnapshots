@@ -52,7 +52,12 @@ Docker tab → Add Container, then set:
 | Variable `PORT` | `8095` |
 | Variable `TZ` | your time zone, e.g. `Europe/Berlin` |
 
-**Option C — Compose Manager plugin**: create a stack with [`deploy/docker-compose.yml`](deploy/docker-compose.yml) and change the volume to `/mnt/user/appdata/bluesound-snapshot:/data`.
+**Option C — Compose Manager plugin**
+
+1. Docker tab → *Compose* section → **Add New Stack**, name it `bluesound-snapshots`.
+2. *Edit Stack* → *Compose File*: paste [`unraid/compose-manager/docker-compose.yml`](unraid/compose-manager/docker-compose.yml) (adjust `TZ`).
+3. *Edit Stack* → *UI Labels*: icon `https://raw.githubusercontent.com/sneakinhysteria/BluesoundSnapshots/main/public/icon.png`, WebUI `http://<server-ip>:8095` — or paste [`unraid/compose-manager/docker-compose.override.yml`](unraid/compose-manager/docker-compose.override.yml) as override with your server IP.
+4. **Compose Up**. Updates: *Update Stack*.
 
 Tip: give the speakers fixed addresses (DHCP reservations) in your router. The app identifies speakers by MAC address and finds them again anyway, but other integrations (e.g. Home Assistant) may be configured by IP.
 
