@@ -111,15 +111,19 @@
     <div class="section-head"><h2>AirPlay receivers</h2></div>
     <div class="card"><div id="airplay" class="empty">Loading…</div>
       <div class="hint">Set an AirPlay name in a snapshot's edit form. The receiver is offered while that setup is active.</div></div>
-    <div class="section-head"><h2>Volume guard</h2></div>
-    <div class="card empty">Planned: undo volume changes from an unwanted source (see Activity for what changes the volume).</div>
+    <div class="section-head"><h2>Volume guard</h2>
+      <label class="meta"><input type="checkbox" id="guardOn"> on</label></div>
+    <div class="card"><div id="guard" class="empty">Loading…</div>
+      <div class="hint">Undoes volume changes a TV sends by itself over HDMI-CEC: steps less than 0.3 s apart, or steps in the
+        TV's repeating rhythm (learned, about every 15 minutes). Remote control clicks are not affected. Works in both directions.
+        Detections are logged in Activity, also while the guard is off.</div></div>
     <div class="section-head"><h2>TV audio re-sync</h2></div>
     <div class="card empty">Planned: switch the soundbar's TV input off and on when the TV starts with a wrong sample rate.</div>
   </section>
 
   <section data-panel="activity" hidden>
     <div class="section-head"><h2>Activity</h2>
-      <label class="meta"><input type="checkbox" id="volOnly"> volume only</label></div>
+      <label class="meta"><input type="checkbox" id="volOnly"> volume and guard only</label></div>
     <div class="card"><div id="events" class="log empty" style="max-height:none">Loading…</div></div>
   </section>
 </main>
@@ -427,6 +431,21 @@ $('#job').addEventListener('click', (ev) => { if (ev.target.closest('[data-act="
 $('#refresh').addEventListener('click', () => { showError(null); loadCurrent(); loadEvents(); });
 $('#volOnly').addEventListener('change', () => loadEvents());
 
+async function loadGuard() {
+  try {
+    const g = await api('GET', '/api/guard');
+    $('#guardOn').checked = g.enabled;
+    const t = (iso) => iso ? new Date(iso).toLocaleTimeString() : '–';
+    $('#guard').className = '';
+    $('#guard').innerHTML = `${g.enabled ? '<span class="dot on"></span>Active' : '<span class="dot"></span>Off'}
+      · undone: ${g.undone} · last drift: ${t(g.lastDrift)} · next expected: ${t(g.nextExpected)} · period: ${Math.floor(g.periodS / 60)} min ${(g.periodS % 60).toFixed(1)} s`;
+  } catch (e) { $('#guard').textContent = e.message; }
+}
+$('#guardOn').addEventListener('change', async (ev) => {
+  try { await api('PUT', '/api/guard', { enabled: ev.target.checked }); } catch (e) { showError(e); }
+  loadGuard();
+});
+
 async function loadAirplay() {
   try {
     const ap = await api('GET', '/api/airplay');
@@ -474,7 +493,7 @@ function showTab(name) {
   for (const p of document.querySelectorAll('[data-panel]')) p.hidden = p.dataset.panel !== name;
   try { localStorage.setItem('tab', name); } catch {}
   if (name === 'speakers') loadSpeakers();
-  if (name === 'helpers') loadAirplay();
+  if (name === 'helpers') { loadAirplay(); loadGuard(); }
   if (name === 'activity') loadEvents();
 }
 document.querySelector('.tabs').addEventListener('click', (ev) => {
@@ -484,12 +503,14 @@ $('#scan').addEventListener('click', () => { showError(null); loadSpeakers(true)
 
 const eventLine = (e) => {
   const t = new Date(e.t);
-  return `<div>${t.toLocaleDateString()} ${t.toLocaleTimeString()}  ${esc(e.player)}  ${e.kind === 'volume' ? 'Volume' : 'Playback'}: ${esc(e.detail)}</div>`;
+  const kind = { volume: 'Volume', playback: 'Playback', guard: 'Guard' }[e.kind] || e.kind;
+  return `<div class="${e.kind === 'guard' ? 'warn' : ''}">${t.toLocaleDateString()} ${t.toLocaleTimeString()}  ${esc(e.player)}  ${kind}: ${esc(e.detail)}</div>`;
 };
 
 async function loadEvents() {
   try {
-    const list = await api('GET', `/api/events?limit=300${$('#volOnly').checked ? '&kind=volume' : ''}`);
+    let list = await api('GET', '/api/events?limit=300');
+    if ($('#volOnly').checked) list = list.filter((e) => e.kind === 'volume' || e.kind === 'guard');
     const el = $('#events');
     el.className = 'log' + (list.length ? '' : ' empty');
     el.innerHTML = list.length ? list.map(eventLine).join('') : 'No changes recorded yet';
@@ -501,7 +522,8 @@ function liveEvents() {
   const es = new EventSource('/api/events/stream');
   es.onmessage = (msg) => {
     const e = JSON.parse(msg.data);
-    if ($('#volOnly').checked && e.kind !== 'volume') return;
+    if ($('#volOnly').checked && !['volume', 'guard'].includes(e.kind)) return;
+    if (e.kind === 'guard' && !$('[data-panel="helpers"]').hidden) loadGuard();
     const el = $('#events');
     if (el.classList.contains('empty')) { el.className = 'log'; el.innerHTML = ''; }
     el.insertAdjacentHTML('afterbegin', eventLine(e));

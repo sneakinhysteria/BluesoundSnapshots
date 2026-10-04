@@ -6,6 +6,7 @@ import { airplayAvailable, airplayEvent, airplayStatus, pcmSource, reconcileAirp
 import { registerStreams } from './stream.ts';
 import { startMonitor } from './monitor.ts';
 import { startLsdp } from './lsdp.ts';
+import { guardInfo, seedGuard, setGuardEnabled } from './guard.ts';
 import { speakerList } from './speakers.ts';
 import { discover, probeHosts, scanSubnets } from './discovery.ts';
 import { getJob, lastJob, runningJob, startRecall } from './recall.ts';
@@ -86,6 +87,13 @@ app.get('/api/events/stream', (req, reply) => {
   const ping = setInterval(() => reply.raw.write(': ping\n\n'), 25_000); // keeps proxies from closing it
   eventBus.on('event', send);
   req.raw.on('close', () => { clearInterval(ping); eventBus.off('event', send); });
+});
+
+app.get('/api/guard', async () => guardInfo());
+app.put<{ Body: { enabled?: boolean } }>('/api/guard', async (req) => {
+  if (typeof req.body?.enabled !== 'boolean') throw Object.assign(new Error('enabled (true/false) is required'), { statusCode: 400 });
+  setGuardEnabled(req.body.enabled);
+  return guardInfo();
 });
 
 app.get('/api/airplay', async () => ({ available: airplayAvailable(), receivers: airplayStatus() }));
@@ -189,6 +197,7 @@ await app.listen({ host: process.env.HOST ?? '0.0.0.0', port: Number(process.env
 
 if (!airplayAvailable()) app.log.warn('shairport-sync not found, AirPlay receivers disabled');
 startLsdp((msg) => app.log.warn(msg));
+seedGuard();
 startMonitor((msg) => app.log.warn(msg), scheduleRefresh);
 captureSnapshot().then(afterRead).catch((e) => app.log.warn(`Initial read failed: ${e.message}`));
 for (const sig of ['SIGTERM', 'SIGINT'] as const) process.on(sig, () => { stopAllAirplay(); process.exit(0); });

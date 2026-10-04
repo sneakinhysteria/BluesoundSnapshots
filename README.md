@@ -5,7 +5,8 @@ Store and recall BluOS speaker setups with one button. BluOS lets a speaker belo
 - **Snapshots**: fixed groups (stereo pairs, home cinema with channel roles and speaker distances), subwoofer pairing, member and sub levels, audio and subwoofer settings (listening mode, tone controls, crossover, phase, …), volume and mute.
 - **Recall**: dissolves what differs, rebuilds the setup, restores levels and settings, checks silently that the group actually plays, and verifies the result.
 - **AirPlay 2 receiver** per setup for speakers without AirPlay 2 (e.g. 1st-gen Pulse Flex), active only while that setup is in place.
-- **Activity log** of volume, input and format changes on all players.
+- **Volume guard** that undoes volume changes a TV sends by itself over HDMI-CEC (e.g. periodic drift), without blocking the remote control.
+- **Activity log** of volume, input and format changes on all players (live).
 - Local only: uses the BluOS HTTP API (port 11000) on your network, no cloud account.
 
 Setups are built in the BluOS app; this app only stores and recreates them.
@@ -80,6 +81,12 @@ All settings are optional; defaults are detected automatically.
 ### AirPlay
 
 Enter an *AirPlay name* in a setup's edit form. While that setup is active, an AirPlay 2 receiver with this name is offered (shairport-sync); the audio is streamed to the group as FLAC. Volume from the iPhone/iPad is applied to the BluOS player. Expect ~5–6 s delay (fine for music, not for video). AirPlay itself is limited to CD-quality audio.
+
+### Volume guard (Helpers tab)
+
+Some TVs send volume commands over HDMI-CEC on their own. Observed with a Philips 58PUS8506: every ~15 min 01 s a CEC volume step, either single or a burst of three (first two ~0.13 s apart); for months it went up, later down. The Activity log shows such changes with `source: CEC`.
+
+The guard collects CEC volume changes for 1.5 s and treats a sequence as drift if two steps are less than 0.3 s apart (faster than remote clicks) or if it starts within ±20 s of the learned rhythm. Drift is undone by restoring the previous volume, in both directions. Remote clicks (single steps, >1 s apart, outside the rhythm) are left alone. Detections are logged in Activity even while the guard is off. `GET/PUT /api/guard` (`{"enabled": true}`) controls it.
 
 ## Automation (Home Assistant, Node-RED, Shortcuts)
 
@@ -186,6 +193,8 @@ Command formats for fixed groups and settings are not part of the public BluOS A
 | POST | `/api/snapshots/:id/recall` | Start recall, returns job |
 | GET | `/api/jobs/:id`, `/api/jobs/running` | Recall progress |
 | GET | `/api/events?kind=volume` | Activity log |
+| GET | `/api/events/stream` | Activity log, live (Server-Sent Events) |
+| GET/PUT | `/api/guard` | Volume guard status / `{"enabled": true}` |
 | GET | `/api/airplay` | AirPlay receivers |
 | GET | `/api/speakers[?scan=1]` | Speaker list (`scan=1` runs a full discovery) |
 | POST | `/api/recall/<name>` | Recall by name (see *Automation*) |

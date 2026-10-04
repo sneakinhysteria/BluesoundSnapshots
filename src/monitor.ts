@@ -6,6 +6,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { bluosGet } from './bluos.ts';
 import { discover, probeHosts } from './discovery.ts';
 import { devices, events } from './store.ts';
+import { onVolumeChange } from './guard.ts';
 
 const LONG_POLL_S = 100;
 const RESCAN_MS = 5 * 60_000;
@@ -52,6 +53,9 @@ function watch(mac: string, host: string, name: string) {
       if (now.mute !== vol.mute) parts.push(now.mute === '1' ? 'muted' : 'unmuted');
       parts.push(`source: ${v.source || '(none)'}`);
       log('volume', parts.join(', '));
+      if (now.mute === vol.mute) {
+        onVolumeChange({ mac, host: w.host, player: w.name, from: Number(vol.level), to: Number(now.level), source: v.source ?? '', t: Date.now() });
+      }
     }
     vol = now;
   });
