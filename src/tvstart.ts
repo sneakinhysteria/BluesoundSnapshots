@@ -6,7 +6,7 @@
 import { bluosGet, getVolume } from './bluos.ts';
 import { events, kv } from './store.ts';
 import { expectVolume } from './origin.ts';
-import type { VolumeChange } from './guard.ts';
+import { onTvStart, type VolumeChange } from './guard.ts';
 
 export interface TvStartConfig {
   mode: 'off' | 'fixed' | 'max';
@@ -56,8 +56,10 @@ export function onPlaybackChange(mac: string, host: string, player: string, p: P
   if (p.service !== 'Capture' || !p.title) return;
   if (!knownInputs.has(p.title)) { knownInputs.add(p.title); kv.set('captureInputs', [...knownInputs]); }
   // First observation after a restart is not a switch.
-  if (prev === undefined || prev === key || config.mode === 'off' || !isTvInput(p.title)) return;
+  if (prev === undefined || prev === key || !isTvInput(p.title)) return;
   if (!['stream', 'play'].includes(p.state)) return;
+  onTvStart(mac);
+  if (config.mode === 'off') return;
   setTimeout(() => apply(mac, host, player, p.title).catch((e) =>
     events.add({ mac, player, kind: 'guard', detail: `TV start volume failed: ${e.message}` })), SETTLE_MS);
 }

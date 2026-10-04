@@ -46,6 +46,15 @@ let lastAction: string | undefined;
 const sequences = new Map<string, Seq[]>();   // by MAC, last 24 h
 const patterns = new Map<string, Pattern>();  // by MAC
 const pending = new Map<string, VolumeChange[]>();
+// Later reference points than the learned chain: a recognised drift or a TV start after a long pause.
+const anchors = new Map<string, number>();
+
+function setPattern(mac: string, p: Pattern | undefined) {
+  if (!p) { patterns.delete(mac); return; }
+  const a = anchors.get(mac);
+  if (a && a > p.anchor) p.anchor = a;
+  patterns.set(mac, p);
+}
 
 // ---- Pattern learning ----
 
@@ -135,8 +144,10 @@ async function judge(changes: VolumeChange[]) {
   const burst = minGap < BURST_GAP_MS;
 
   (sequences.get(seq.mac) ?? sequences.set(seq.mac, []).get(seq.mac)!).push(seq);
+  const automaticNow = rhythm || (burst && (before?.bursty ?? false));
+  if (automaticNow) anchors.set(seq.mac, seq.t); // restart the rhythm from every recognised drift
   const learned = analyze(seq.mac);
-  if (learned) patterns.set(seq.mac, learned); else patterns.delete(seq.mac);
+  setPattern(seq.mac, learned);
   if (!before && learned) {
     events.add({ mac: seq.mac, player: seq.player, kind: 'guard',
       detail: `pattern recognised: CEC volume change every ${fmt(learned.periodMs)} (${learned.matches}×)` });
@@ -145,7 +156,7 @@ async function judge(changes: VolumeChange[]) {
   if (mode === 'off') return;
   if (mode === 'lock') return restore(seq, 'lock');
 
-  const automatic = rhythm || (burst && (before?.bursty ?? false));
+  const automatic = automaticNow;
   if (!automatic && !burst) return; // remote control or other manual change
   const why = rhythm ? `rhythm ${fmt(before!.periodMs)}` : 'burst';
   if (mode === 'undo' && automatic) return restore(seq, why);
@@ -185,10 +196,20 @@ export function seedGuard() {
       list.push(Object.assign({ mac: e.mac, host: '', player: e.player, t, from: Number(m[1]), to: Number(m[2]), steps: 1, minGap: Infinity }, { lastT: t }));
     }
   }
-  for (const mac of sequences.keys()) {
-    const p = analyze(mac);
-    if (p) patterns.set(mac, p);
-  }
+  for (const mac of sequences.keys()) setPattern(mac, analyze(mac));
+}
+
+/**
+ * Called when a player switches to a TV input. A TV's timer apparently starts at power-on (first
+ * drift observed 15 min 14 s after the TV input started, period 15 min 01 s), so after a pause
+ * longer than the guard's horizon the TV start becomes the reference point.
+ */
+export function onTvStart(mac: string, t = Date.now()) {
+  const p = patterns.get(mac);
+  if (!p || t - p.anchor <= MAX_CYCLES * p.periodMs) return;
+  anchors.set(mac, t);
+  p.anchor = t;
+  events.add({ mac, player: p.player, kind: 'guard', detail: `TV started: expecting CEC drift from ${new Date(t + p.periodMs).toLocaleTimeString('en-GB', { timeZone: process.env.TZ || 'UTC' })}` });
 }
 
 // ---- API ----
