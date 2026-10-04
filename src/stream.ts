@@ -29,6 +29,12 @@ function flacEncoder(input: string[]): ChildProcess {
   });
 }
 
+// A speaker that restarts or loses power doesn't close its connection; once nothing moves for
+// 30 s the socket is closed, which ends the encoder.
+function dropWhenStalled(res: import('node:http').ServerResponse) {
+  res.socket?.setTimeout(30_000, () => res.socket?.destroy());
+}
+
 type PcmSource = (id: string) => { subscribe(sink: NodeJS.WritableStream): () => void } | undefined;
 
 export function registerStreams(app: FastifyInstance, pcmSource: PcmSource) {
@@ -36,7 +42,9 @@ export function registerStreams(app: FastifyInstance, pcmSource: PcmSource) {
   // silence is not enough: a stuck stereo pair "plays" silence but stays in "connecting" for music.
   app.get('/stream/check.flac', (req, reply) => {
     reply.hijack();
-    const ff = flacEncoder(['-re', '-f', 'lavfi', '-i', `anoisesrc=a=0.0003:r=${PCM.rate},aformat=channel_layouts=stereo`]);
+    // -t 60: a check takes at most ~20 s; a restarted speaker may never close its connection.
+    const ff = flacEncoder(['-re', '-f', 'lavfi', '-t', '60', '-i', `anoisesrc=a=0.0003:r=${PCM.rate},aformat=channel_layouts=stereo`]);
+    dropWhenStalled(reply.raw);
     reply.raw.writeHead(200, { 'content-type': 'audio/flac', 'cache-control': 'no-cache' });
     ff.stdout!.pipe(reply.raw);
     reply.raw.on('close', () => ff.kill()); // the response closes when the player disconnects
@@ -55,6 +63,7 @@ export function registerStreams(app: FastifyInstance, pcmSource: PcmSource) {
     const unsubscribe = source.subscribe(ff.stdin!);
     reply.raw.writeHead(200, { 'content-type': 'audio/flac', 'cache-control': 'no-cache' });
     ff.stdout!.pipe(reply.raw);
+    dropWhenStalled(reply.raw);
     reply.raw.on('close', () => { unsubscribe(); ff.kill(); });
   });
 }
