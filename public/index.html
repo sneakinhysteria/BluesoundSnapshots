@@ -65,8 +65,10 @@
   .tabs button { border: none; border-bottom: 2px solid transparent; border-radius: 0; padding: 10px 12px; color: var(--muted); white-space: nowrap; }
   .tabs button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
   .table-scroll { overflow-x: auto; }
-  .speaker-table td { padding: 10px 16px 10px 0; vertical-align: top; white-space: nowrap; }
-  .speaker-table td:first-child { color: var(--text); width: auto; }
+  .speaker-table td { padding: 10px 16px 10px 0; vertical-align: top; }
+  .speaker-table td:first-child { width: auto; }
+  .speaker-table td.dot-cell { width: 14px; padding-right: 6px; padding-top: 15px; }
+  .speaker-table td.dot-cell .dot { margin-right: 0; }
   .speaker-table td:last-child { padding-right: 0; }
   .speaker-table .sub { color: var(--muted); font-size: .8rem; }
   .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; background: var(--muted); }
@@ -552,7 +554,8 @@ async function loadSpeakers(scan = false) {
     } else {
       el.className = 'card';
       el.innerHTML = `<div class="table-scroll"><table class="speaker-table">${r.speakers.map((p) => `<tr>
-        <td><span class="dot${p.reachable ? ' on' : ''}"></span><b>${esc(p.name)}</b>
+        <td class="dot-cell"><span class="dot${p.reachable ? ' on' : ''}" title="${p.reachable ? 'reachable' : 'not reachable'}"></span></td>
+        <td><b>${esc(p.name)}</b>
           <div class="sub">${esc(p.model)}${p.modelCode && p.modelCode !== p.model ? ' (' + esc(p.modelCode) + ')' : ''}</div>
           ${p.version ? `<div class="sub">BluOS ${esc(p.version)}</div>` : ''}</td>
         <td>${esc(p.role)}<div class="sub">${esc(p.ip)} · ${esc(p.mac)}</div></td>
