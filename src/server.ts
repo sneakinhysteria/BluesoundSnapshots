@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { applyEdits, backfillMeta, captureSnapshot, carryOver, isActive, latest, setLatest, type Snapshot, type ZoneEdit } from './snapshot.ts';
 import { airplayAvailable, airplayEvent, airplayStatus, pcmSource, reconcileAirplay, setAirplayLogger, stopAllAirplay } from './airplay.ts';
 import { registerStreams } from './stream.ts';
+import { versionInfo } from './version.ts';
 import { cover, nowPlaying, nowPlayingBus, type NowPlaying } from './metadata.ts';
 import { startMonitor } from './monitor.ts';
 import { startLsdp } from './lsdp.ts';
@@ -120,6 +121,8 @@ app.put<{ Body: Partial<TvStartConfig> }>('/api/tvstart', async (req) => {
 app.addHook('onSend', async (req, reply) => {
   if (req.url.startsWith('/api/airplay')) reply.header('access-control-allow-origin', '*');
 });
+
+app.get('/api/version', async () => versionInfo());
 
 app.get('/api/airplay', async () => ({ available: airplayAvailable(), receivers: airplayStatus() }));
 

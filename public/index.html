@@ -80,6 +80,8 @@
   .pattern { margin-top: 8px; }
   .footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--line); text-align: center; font-size: .85rem; }
   .footer a { color: var(--muted); text-decoration: none; }
+  .footer .meta { margin-top: 4px; }
+  .footer b a { color: var(--accent); }
   .footer a:hover { color: var(--accent); text-decoration: underline; }
   .card-error { color: var(--danger); margin-top: 12px; }
 </style>
@@ -159,6 +161,7 @@
   </section>
   <footer class="footer">
     <a href="https://github.com/sneakinhysteria/BluesoundSnapshots" target="_blank" rel="noopener">Bluesound Snapshots on GitHub</a>
+    <div id="version" class="meta"></div>
   </footer>
 </main>
 
@@ -509,6 +512,17 @@ $('#tvSave').addEventListener('click', async () => {
   loadTvStart();
 });
 
+async function loadVersion() {
+  try {
+    const v = await api('GET', '/api/version');
+    const fmt = (b) => `${esc(b.commit.slice(0, 7))}${b.date ? ' (' + new Date(b.date).toLocaleDateString() + ')' : ''}`;
+    const link = (b) => `<a href="${v.repo}/commit/${esc(b.commit)}" target="_blank" rel="noopener">${fmt(b)}</a>`;
+    $('#version').innerHTML = v.installed.commit === 'dev' ? 'Development build'
+      : `Version ${link(v.installed)} · ` + (!v.available ? 'latest version unknown'
+        : v.updateAvailable ? `<b>update available: ${link(v.available)}</b>` : 'up to date');
+  } catch { /* footer stays without version */ }
+}
+
 async function loadAirplay() {
   try {
     const ap = await api('GET', '/api/airplay');
@@ -621,6 +635,7 @@ $('#save').addEventListener('submit', async (ev) => {
   await loadCurrent(false);
   renderSnapshots();
   loadCurrent();
+  loadVersion();
 })();
 </script>
 </body>

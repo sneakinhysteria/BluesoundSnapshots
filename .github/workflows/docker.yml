@@ -36,3 +36,6 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            APP_COMMIT=${{ github.sha }}
+            APP_COMMIT_DATE=${{ github.event.head_commit.timestamp }}
