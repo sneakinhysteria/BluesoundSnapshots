@@ -18,6 +18,16 @@ const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? 'info' } });
 
 app.register(fastifyStatic, { root: join(import.meta.dirname, '..', 'public') });
 registerStreams(app, pcmSource);
+
+// Clients like Home Assistant's rest_command send a content type (e.g. form or text) with an
+// empty POST body; without a parser Fastify rejects those with 415. Bodies we need are JSON.
+const lenient = (req: unknown, body: string | Buffer, done: (err: Error | null, body?: unknown) => void) => {
+  if (!body || !String(body).trim()) return done(null, undefined);
+  try { done(null, JSON.parse(String(body))); } catch { done(null, String(body)); }
+};
+app.removeContentTypeParser('application/json');
+app.addContentTypeParser('application/json', { parseAs: 'string' }, lenient);
+app.addContentTypeParser('*', { parseAs: 'string' }, lenient);
 setAirplayLogger((msg) => app.log.info(msg));
 
 const busy = () => {
