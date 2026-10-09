@@ -162,7 +162,25 @@ async function build(z: SnapshotZone, lan: Map<string, SyncStatus>, log: Log) {
 // Plays inaudible noise at volume 0 and checks that playback advances. A group can look complete
 // in SyncStatus yet stay in "connecting" for any real audio (it still "plays" digital silence);
 // only a restart of its speakers helps.
-async function playbackWorks(leaderHost: string, log: Log): Promise<boolean> {
+type Input = { url: string; title: string };
+
+// When the group was on an input (e.g. TV), switching back to it is the check: playing state with
+// an audio format, twice in a row. Falls back to the noise check if the input stays silent.
+async function inputPlays(leaderHost: string, input: Input, log: Log): Promise<boolean> {
+  log(`Checking playback with input ${input.title}`);
+  await bluosGet(leaderHost, '/Play', { url: input.url }, 15_000);
+  let good = 0;
+  for (const until = Date.now() + 10_000; Date.now() < until;) {
+    await sleep(1500);
+    const st = (await bluosGet(leaderHost, '/Status')).status ?? {};
+    good = ['stream', 'play'].includes(st.state) && (st.quality || st.streamFormat) ? good + 1 : 0;
+    if (good >= 2) return true;
+  }
+  return false;
+}
+
+async function playbackWorks(leaderHost: string, log: Log, input?: Input): Promise<boolean> {
+  if (input && await inputPlays(leaderHost, input, log).catch(() => false)) return true;
   log('Checking playback (silent)');
   expectVolume(leaderHost, 0, 'Recall (silent check)');
   await bluosGet(leaderHost, '/Volume', { level: 0, tell_slaves: 0 });
@@ -194,11 +212,11 @@ async function rebootSpeakers(macs: string[], lan: Map<string, SyncStatus>, log:
  * Builds a zone (unless it already matches) and checks it plays; on failure restarts its speakers
  * once and builds again.
  */
-async function buildChecked(z: SnapshotZone, lan: Map<string, SyncStatus>, log: Log, job: Job, alreadyBuilt = false): Promise<Map<string, SyncStatus>> {
+async function buildChecked(z: SnapshotZone, lan: Map<string, SyncStatus>, log: Log, job: Job, alreadyBuilt = false, input?: Input): Promise<Map<string, SyncStatus>> {
   if (!alreadyBuilt) await build(z, lan, log);
   if (!z.members.length && !z.sub) return lan;
   const label = z.groupName ?? z.leader.name;
-  if (await playbackWorks(hostOf(lan, z.leader.mac, z.leader.name), log)) return lan;
+  if (await playbackWorks(hostOf(lan, z.leader.mac, z.leader.name), log, input)) return lan;
 
   log(`"${label}" does not start playback, restarting its speakers`, 'warn');
   const leader = await syncStatus(hostOf(lan, z.leader.mac, z.leader.name));
@@ -207,7 +225,7 @@ async function buildChecked(z: SnapshotZone, lan: Map<string, SyncStatus>, log: 
   await rebootSpeakers([z.leader.mac, ...z.members.map((m) => m.mac)], lan, log);
   lan = await waitUntilFree(zoneMacs(z), log);
   await build(z, lan, log);
-  if (!(await playbackWorks(hostOf(lan, z.leader.mac, z.leader.name), log))) {
+  if (!(await playbackWorks(hostOf(lan, z.leader.mac, z.leader.name), log, input))) {
     job.differences.push(`"${label}": playback does not start, even after restarting its speakers`);
     log(`"${label}" still does not start playback`, 'error');
   }
@@ -254,7 +272,7 @@ async function recall(target: Snapshot, log: Log, job: Job) {
 
   // Players on an input (TV/HDMI, optical, analog) are switched back to it at the end: the
   // playback check and regrouping leave them on another source, so TV sound would stay silent.
-  const inputs = new Map<string, { url: string; title: string }>();
+  const inputs = new Map<string, Input>();
   for (const p of lan.values()) {
     if (p.master) continue;
     const st = (await bluosGet(p.host, '/Status').catch(() => undefined))?.status;
@@ -279,12 +297,14 @@ async function recall(target: Snapshot, log: Log, job: Job) {
     await sleep(SETTLE_AFTER_SURROUND_MS);
   }
 
-  for (const z of rebuild) if (z.members.length || z.sub || z.dynamicSlaves.length) lan = await buildChecked(z, lan, log, job);
+  for (const z of rebuild) {
+    if (z.members.length || z.sub || z.dynamicSlaves.length) lan = await buildChecked(z, lan, log, job, false, inputs.get(z.leader.mac));
+  }
 
   lan = await discover();
   // Groups that already matched are checked too: a recall of the active setup repairs a stuck group.
   for (const z of target.zones) {
-    if (keep.has(zoneKey(z)) && (z.members.length || z.sub)) lan = await buildChecked(z, lan, log, job, true);
+    if (keep.has(zoneKey(z)) && (z.members.length || z.sub)) lan = await buildChecked(z, lan, log, job, true, inputs.get(z.leader.mac));
   }
   lan = await discover();
   for (const z of target.zones) {
@@ -298,6 +318,9 @@ async function recall(target: Snapshot, log: Log, job: Job) {
   for (const [mac, input] of inputs) {
     const p = lan.get(mac);
     if (!p) continue;
+    // Already back on its input (the check used it): don't interrupt it again.
+    const now = (await bluosGet(p.host, '/Status').catch(() => undefined))?.status;
+    if (now?.streamUrl === input.url && ['stream', 'play'].includes(now.state)) continue;
     try {
       await bluosGet(p.host, '/Play', { url: input.url }, 15_000);
       log(`${devices.list().find((d) => d.mac === mac)?.name ?? p.name}: back to input ${input.title}`);
