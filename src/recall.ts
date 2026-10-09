@@ -252,6 +252,15 @@ async function recall(target: Snapshot, log: Log, job: Job) {
   let lan = await discover();
   const current = await captureSnapshot(lan);
 
+  // Players on an input (TV/HDMI, optical, analog) are switched back to it at the end: the
+  // playback check and regrouping leave them on another source, so TV sound would stay silent.
+  const inputs = new Map<string, { url: string; title: string }>();
+  for (const p of lan.values()) {
+    if (p.master) continue;
+    const st = (await bluosGet(p.host, '/Status').catch(() => undefined))?.status;
+    if (st?.service === 'Capture' && st.streamUrl) inputs.set(p.mac, { url: String(st.streamUrl), title: String(st.title1 ?? st.streamUrl) });
+  }
+
   const targetKeys = new Set(target.zones.map(zoneKey));
   const keep = new Set(current.zones.filter((z) => targetKeys.has(zoneKey(z))).map(zoneKey));
   const rebuild = target.zones.filter((z) => !keep.has(zoneKey(z)));
@@ -283,6 +292,17 @@ async function recall(target: Snapshot, log: Log, job: Job) {
       await restoreLevels(z, lan, log);
     } catch (e: any) {
       log(`Could not restore levels/settings for "${z.groupName ?? z.leader.name}": ${e.message}`, 'warn');
+    }
+  }
+
+  for (const [mac, input] of inputs) {
+    const p = lan.get(mac);
+    if (!p) continue;
+    try {
+      await bluosGet(p.host, '/Play', { url: input.url }, 15_000);
+      log(`${devices.list().find((d) => d.mac === mac)?.name ?? p.name}: back to input ${input.title}`);
+    } catch (e: any) {
+      log(`Could not switch back to input ${input.title}: ${e.message}`, 'warn');
     }
   }
 
