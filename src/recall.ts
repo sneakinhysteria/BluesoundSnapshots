@@ -3,7 +3,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { bluosGet, bluosPost, setSlaveLevel, setVolume, syncStatus, type SyncStatus } from './bluos.ts';
+import { bluosGet, bluosPost, memberSyncStatus, setSlaveLevel, setVolume, syncStatus, type SyncStatus } from './bluos.ts';
 import { selfUrl } from './stream.ts';
 import { expectVolume } from './origin.ts';
 import { reconcileAirplay } from './airplay.ts';
@@ -111,6 +111,27 @@ async function waitUntilFree(macs: string[], log: Log): Promise<Map<string, Sync
     const ready = macs.every((m) => { const p = lan.get(m); return p && isFree(p); });
     return ready ? lan : undefined;
   });
+}
+
+// A member that misses the ungroup command can stay on the soundbar's private network and only
+// comes back after a factory reset. So every member must answer before anything is changed.
+async function checkResponding(toDissolve: SyncStatus[], needed: string[], lan: Map<string, SyncStatus>, log: Log) {
+  const nameOf = (mac: string, fallback: string) => devices.list().find((d) => d.mac === mac)?.name ?? fallback;
+  const fail = (name: string) => {
+    throw new Error(`${name} doesn't respond. Nothing was changed. Restart it, wait until it plays again, then recall.`);
+  };
+  const ok = new Set(lan.keys());
+  for (const leader of toDissolve) {
+    for (const m of [...leader.members, ...leader.slaves]) {
+      const onLan = [...lan.values()].find((p) => p.host === m.id);
+      if (onLan) continue;
+      const s = await memberSyncStatus(leader.host, m).catch(() => undefined);
+      if (!s?.mac) fail(`${'name' in m && m.name ? m.name : m.id} (in "${leader.name}")`);
+      ok.add(s!.mac);
+    }
+  }
+  for (const mac of needed) if (!ok.has(mac)) fail(nameOf(mac, mac));
+  log('All speakers respond');
 }
 
 function hostOf(lan: Map<string, SyncStatus>, mac: string, name: string): string {
@@ -285,12 +306,12 @@ async function recall(target: Snapshot, log: Log, job: Job) {
   for (const z of target.zones) if (keep.has(zoneKey(z))) log(`"${z.groupName ?? z.leader.name}" already matches`);
 
   const toDissolve = current.zones.filter((z) => !keep.has(zoneKey(z)) && (z.members.length || z.sub || z.dynamicSlaves.length));
-  for (const z of toDissolve) {
-    const leader = lan.get(z.leader.mac);
-    if (leader) await dissolve(leader, log);
-  }
-
+  const leaders = toDissolve.map((z) => lan.get(z.leader.mac)).filter((p): p is SyncStatus => !!p);
   const needed = [...new Set(rebuild.flatMap(zoneMacs))];
+  await checkResponding(leaders, needed, lan, log);
+
+  for (const leader of leaders) await dissolve(leader, log);
+
   if (needed.length) lan = await waitUntilFree(needed, log);
   if (needed.length && toDissolve.some(isSurround)) {
     log(`Letting speakers settle after leaving "${toDissolve.filter(isSurround).map((z) => z.groupName ?? z.leader.name).join('", "')}" (${SETTLE_AFTER_SURROUND_MS / 1000} s)`);
